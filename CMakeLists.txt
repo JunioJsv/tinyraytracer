@@ -1,8 +1,18 @@
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required (VERSION 3.16)
 project(tinyraytracer)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(Qt6 REQUIRED COMPONENTS Widgets Gui)
+
+if(Qt6_FOUND)
+    message(STATUS "Qt6 found: ${Qt6_DIR}")
+    set(CMAKE_AUTOUIC ON)
+    set(CMAKE_AUTOMOC ON)
+    set(CMAKE_AUTORCC ON)
+    qt_standard_project_setup()
+endif()
 
 find_package(OpenMP)
 if(OPENMP_FOUND)
@@ -15,6 +25,10 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-file(GLOB SOURCES *.h *.cpp)
+file(GLOB SOURCES src/*.h src/*.cpp)
 add_executable(${PROJECT_NAME} ${SOURCES})
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets Qt6::Gui)
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    WIN32_EXECUTABLE TRUE
+)
 
