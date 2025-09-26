@@ -1,10 +1,20 @@
 cmake_minimum_required (VERSION 3.16)
-project(tinyraytracer)
+project(tinyraytracer LANGUAGES CXX CUDA)
+
+enable_language(CUDA)
+
+include(CheckLanguage)
+check_language(CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED True)
+add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 find_package(Qt6 REQUIRED COMPONENTS Widgets Gui)
+find_package(CUDAToolkit REQUIRED)
 
 if(Qt6_FOUND)
     message(STATUS "Qt6 found: ${Qt6_DIR}")
@@ -25,9 +35,10 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-file(GLOB SOURCES src/*.h src/*.cpp)
+file(GLOB SOURCES src/*.cpp src/cuda/*.cu)
 add_executable(${PROJECT_NAME} ${SOURCES})
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets Qt6::Gui)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 75)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets Qt6::Gui CUDA::cudart)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     WIN32_EXECUTABLE TRUE
 )

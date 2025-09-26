@@ -3,9 +3,9 @@
 
 #include <QMainWindow>
 #include <QTimer>
-#include "raytracer.h"
+#include "cuda/cuda_raytracer.h"
 
-using namespace Raytracer;
+using namespace CudaRaytracer;
 
 namespace Ui {
     class MainWindow;
@@ -16,8 +16,6 @@ class MainWindow final : public QMainWindow {
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
-
-    static vec3 rotateCamera(vec3 v, float yaw, float pitch);
 
     QImage render() const;
 
@@ -35,7 +33,9 @@ private:
     Ui::MainWindow *ui;
     QTimer timer;
 
-    float lastFrameTime = 0.0F;
+    float last_frame_time = 0.0F;
+    QPoint window_center;
+    float delta_time = 0.0F;
     vec3 position{0, 0, 0};
     float camera_yaw = 0;
     float camera_pitch = 0;
