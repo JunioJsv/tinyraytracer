@@ -28,3 +28,5 @@ file(GLOB SOURCES src/*.cpp src/cuda/*.cu)
 add_executable(${PROJECT_NAME} ${SOURCES})
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 75)
 target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart raylib)
+
+install(TARGETS ${PROJECT_NAME})
