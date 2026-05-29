@@ -1,8 +1,6 @@
 #ifndef CUDA_RAYTRACER_H
 #define CUDA_RAYTRACER_H
 
-#include <cmath>
-#include <algorithm>
 #include <tuple>
 
 #ifndef __CUDACC__
@@ -11,77 +9,119 @@
 #endif
 #define HD __host__ __device__
 
-namespace CudaRaytracer {
-    struct vec3 {
-        float x, y, z;
+namespace CudaRaytracer
+{
+	struct Vec3
+	{
+		float x, y, z;
 
-        HD float &operator[](int i);
+		HD float& Vec3::operator[](const int i) { return i == 0 ? x : (1 == i ? y : z); }
 
-        HD const float &operator[](int i) const;
+		HD const float& Vec3::operator[](const int i) const { return i == 0 ? x : (1 == i ? y : z); }
 
-        HD vec3 operator*(float v) const;
+		HD Vec3 Vec3::operator*(const float v) const { return { x * v, y * v, z * v }; }
 
-        HD float operator*(const vec3 &v) const;
+		HD float Vec3::operator*(const Vec3& v) const { return x * v.x + y * v.y + z * v.z; }
 
-        HD vec3 operator+(const vec3 &v) const;
+		HD Vec3 Vec3::operator+(const Vec3& v) const { return { x + v.x, y + v.y, z + v.z }; }
 
-        HD vec3 operator-(const vec3 &v) const;
+		HD Vec3 Vec3::operator-(const Vec3& v) const
+		{
+			return { x - v.x, y - v.y, z - v.z };
+		}
 
-        HD vec3 operator-() const;
+		HD Vec3 Vec3::operator-() const
+		{
+			return { -x, -y, -z };
+		}
 
-        HD float norm() const;
+		HD Vec3& operator+=(const Vec3& vec3)
+		{
+			x += vec3.x;
+			y += vec3.y;
+			z += vec3.z;
+			return *this;
+		}
 
-        HD vec3 normalized() const;
+		HD Vec3& operator-=(const Vec3& vec3)
+		{
+			x -= vec3.x;
+			y -= vec3.y;
+			z -= vec3.z;
+			return *this;
+		}
 
-        HD vec3 &operator+=(const vec3 &vec3) {
-            x += vec3.x;
-            y += vec3.y;
-            z += vec3.z;
-            return *this;
-        }
+		HD float Norm() const;
 
-        HD vec3 rotated(float pitch, float yaw) const;
+		HD Vec3 Normalized() const;
 
-        HD vec3 cross(vec3 v) const;
-    };
+		HD Vec3 Rotated(
+			float pitch,
+			float yaw
+		) const;
 
+		HD Vec3 Cross(
+			Vec3 v
+		) const;
+	};
 
-    struct RayState {
-        vec3 orig;
-        vec3 dir;
-        int depth;
-        float weight;
-        int ray_type; // 0 = raio principal, 1 = reflexão, 2 = refração
-    };
+	enum class RayType
+	{
+		PRIMARY = 0,
+		REFLECTION = 1,
+		REFRACTION = 2
+	};
 
-    struct Material {
-        float refractive_index;
-        float albedo[4];
-        vec3 diffuse_color;
-        float specular_exponent;
-    };
+	struct RayState
+	{
+		Vec3 orig;
+		Vec3 dir;
+		int depth;
+		float weight;
+		RayType rayType;
+	};
 
-    struct Sphere {
-        vec3 center;
-        float radius;
-        Material material;
-    };
+	struct Material
+	{
+		float refractiveIdx;
+		float albedo[4];
+		Vec3 diffuseColor;
+		float specularExponent;
+	};
 
-    HD vec3 reflect(const vec3 &I, const vec3 &N);
+	struct Sphere
+	{
+		Vec3 center;
+		float radius;
+		Material material;
+	};
 
-    HD vec3 refract(const vec3 &I, const vec3 &N, float eta_t, float eta_i);
+	HD Vec3 Reflect(
+		const Vec3& I,
+		const Vec3& N
+	);
 
-    HD std::tuple<bool, float> ray_sphere_intersect(const vec3 &orig, const vec3 &dir, const Sphere &s);
+	HD Vec3 Refract(
+		const Vec3& I,
+		const Vec3& N,
+		float etaT,
+		float etaI
+	);
 
-    HD std::tuple<bool, vec3, vec3, Material> scene_intersect(const vec3 &orig, const vec3 &dir,
-                                                              const Sphere *spheres_gpu);
+	HD std::tuple<bool, float> RaySphereIntersect(
+		const Vec3& orig,
+		const Vec3& dir,
+		const Sphere& s
+	);
 
-    HD vec3 cast_ray_iterative(const vec3 &orig, const vec3 &dir,
-                               const Sphere *spheres_gpu, const vec3 *lights_gpu, int max_depth);
+	__host__ int Render(
+		uint32_t* image,
+		int width,
+		int height,
+		const Vec3& position,
+		float pitch,
+		float yaw
+	);
 }
-
-using namespace CudaRaytracer;
-
-extern "C" int render_cuda(uint32_t *image, int width, int height, const vec3 &position, float pitch, float yaw);
 
 #endif // CUDA_RAYTRACER_H
