@@ -16,7 +16,7 @@ Currently configured for RTX 20xx series (compute capability 7.5)
 For other GPUs, edit the CUDA_ARCHITECTURES line in CMakeLists.txt
 Check your compute capability at: https://developer.nvidia.com/cuda-gpus
 
-Qt6 with the following modules: Qt6::Widgets Qt6::Gui
+Raylib 6.0 is included as a submodule. Run `git submodule update --init --recursive` after cloning to fetch it.
 
 ## Compilation
 ```sh
