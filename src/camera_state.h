@@ -5,22 +5,22 @@
 
 struct CameraState
 {
-	CudaRaytracer::Vec3 position;
-	float pitch;
-	float yaw;
+    CudaRaytracer::Vec3 position;
+    float pitch;
+    float yaw;
 };
 
 struct CameraInput
 {
-	bool moveForward;
-	bool moveBackward;
-	bool moveLeft;
-	bool moveRight;
-	bool moveUp;
-	bool moveDown;
+    bool moveForward;
+    bool moveBackward;
+    bool moveLeft;
+    bool moveRight;
+    bool moveUp;
+    bool moveDown;
 
-	float mouseDeltaX;
-	float mouseDeltaY;
+    float mouseDeltaX;
+    float mouseDeltaY;
 };
 
 #endif // !CAMERA_STATE_H

@@ -6,16 +6,20 @@
 class CameraController
 {
 public:
-	CameraController() = default;
+    CameraController() = default;
 
-	void Update(
-		const CameraInput& input,
-		float deltaTime
-	);
+    void Update(
+        const CameraInput &input,
+        float deltaTime
+    );
 
-	const CameraState& GetState() const { return state; };
+    [[nodiscard]] const CameraState &GetState() const
+    {
+        return state;
+    }
+
 private:
-	CameraState state;
+    CameraState state;
 };
 
 #endif // !CAMERA_CONTROLLER_H
