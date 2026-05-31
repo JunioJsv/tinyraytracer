@@ -1,5 +1,8 @@
 #include "cuda_raytracer.h"
 
+#include <windows.h>
+#include <gl/GL.h>
+#include <cuda_gl_interop.h>
 #include <device_launch_parameters.h>
 #include <iostream>
 
@@ -112,6 +115,13 @@ namespace CudaRaytracer
         if (t1 > .001f)
             return {true, t1};
         return {false, 0};
+    }
+
+    void Setup()
+    {
+        CUDA_CHECK(cudaMemcpyToSymbol(GPU_SPHERES, CPU_SPHERES, N_SPHERES * sizeof(Sphere)));
+        CUDA_CHECK(cudaMemcpyToSymbol(GPU_LIGHTS, CPU_LIGHTS, N_LIGHTS * sizeof(Vec3)));
+        CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 16384));
     }
 
     __device__ std::tuple<bool, Vec3, Vec3, Material> SceneIntersect(
@@ -244,17 +254,13 @@ namespace CudaRaytracer
         return finalColor;
     }
 
-    __global__ void CastRayKernal(
-        uint32_t *pixels,
+    __device__ Vec3 GetCastRayKernalDir(
+        const unsigned int pixelIdx,
         const int width,
         const int height,
-        const CameraState camera
+        const CameraState &camera
     )
     {
-        const unsigned int pixelIdx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (pixelIdx >= width * height)
-            return;
-
         const unsigned int i = pixelIdx % width;
         const unsigned int j = pixelIdx / width;
 
@@ -262,19 +268,77 @@ namespace CudaRaytracer
         const float dirY = -(j + 0.5f) + height / 2.f;
         const float dirZ = -height / (2.f * tanf(camera.fov / 2.f));
 
-        const Vec3 dir = (camera.forward * -dirZ +
-                          camera.right * dirX +
-                          camera.up * dirY).Normalized();
+        return (camera.forward * -dirZ +
+                camera.right * dirX +
+                camera.up * dirY).Normalized();
+    }
 
+    __device__ std::tuple<unsigned char, unsigned char, unsigned char>
+    CastRay(
+        const unsigned int pixelIdx,
+        const int width,
+        const int height,
+        const CameraState &camera
+    )
+    {
+        const Vec3 dir = GetCastRayKernalDir(pixelIdx, width, height, camera);
         const auto [x, y, z] = CastRay(camera.position, dir, 4);
         const auto r = static_cast<unsigned char>(fminf(fmaxf(x * 255.0f, 0.0f), 255.0f));
         const auto g = static_cast<unsigned char>(fminf(fmaxf(y * 255.0f, 0.0f), 255.0f));
         const auto b = static_cast<unsigned char>(fminf(fmaxf(z * 255.0f, 0.0f), 255.0f));
+
+        return {r, g, b};
+    }
+
+    __global__ void CastRayKernel(
+        uint32_t *pixels,
+        const int width,
+        const int height,
+        const CameraState camera
+    )
+    {
+        const int x = blockIdx.x * blockDim.x + threadIdx.x;
+
+        const int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+        if (x >= width || y >= height)
+            return;
+
+        const int pixelIdx = y * width + x;
+
+        const auto [r, g, b] = CastRay(pixelIdx, width, height, camera);
         const uint32_t color = (255 << 24) | b << 16 | g << 8 | r;
         pixels[pixelIdx] = color;
     }
 
-    int Render(
+    __global__ void CastRayKernel(
+        const cudaSurfaceObject_t surface,
+        const int width,
+        const int height,
+        const CameraState camera
+    )
+    {
+        const int x = blockIdx.x * blockDim.x + threadIdx.x;
+
+        const int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+        if (x >= width || y >= height)
+            return;
+
+        const int pixelIdx = y * width + x;
+
+        const auto [r, g, b] = CastRay(pixelIdx, width, height, camera);
+        const uchar4 pixel = make_uchar4(r, g, b, 255);
+
+        surf2Dwrite(
+            pixel,
+            surface,
+            x * sizeof(uchar4),
+            y
+        );
+    }
+
+    void Render(
         uint32_t *output,
         const int width,
         const int height,
@@ -285,21 +349,74 @@ namespace CudaRaytracer
         const size_t pixelsBytes = width * height * sizeof(uint32_t);
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&pixels), pixelsBytes));
 
-        CUDA_CHECK(cudaMemcpyToSymbol(GPU_SPHERES, CPU_SPHERES, N_SPHERES * sizeof(Sphere)));
-        CUDA_CHECK(cudaMemcpyToSymbol(GPU_LIGHTS, CPU_LIGHTS, N_LIGHTS * sizeof(Vec3)));
+        constexpr dim3 block(16, 16);
 
-        constexpr int BLOCK_SIZE = 16;
-        const int nBlocks = (width * height + BLOCK_SIZE - 1) / BLOCK_SIZE;
-        CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 16384));
+        const dim3 grid(
+            (width + block.x - 1) / block.x,
+            (height + block.y - 1) / block.y
+        );
 
-        CastRayKernal<<<nBlocks, BLOCK_SIZE>>>(pixels, width, height, camera);
+        CastRayKernel<<<grid, block>>>(pixels, width, height, camera);
 
         CUDA_CHECK(cudaDeviceSynchronize());
 
         CUDA_CHECK(cudaMemcpy(output, pixels, pixelsBytes, cudaMemcpyDeviceToHost));
 
         CUDA_CHECK(cudaFree(pixels));
+    }
 
-        return 0;
+    cudaGraphicsResource *SetupCudaTexture(
+        const unsigned int glTextureId
+    )
+    {
+        cudaGraphicsResource *texture;
+
+        CUDA_CHECK(cudaGraphicsGLRegisterImage(
+            &texture,
+            glTextureId,
+            GL_TEXTURE_2D,
+            cudaGraphicsRegisterFlagsSurfaceLoadStore
+        ));
+
+        return texture;
+    }
+
+    void Render(
+        cudaGraphicsResource *texture,
+        const int width,
+        const int height,
+        const CameraState &camera
+    )
+    {
+        CUDA_CHECK(cudaGraphicsMapResources(1, &texture));
+
+        cudaArray_t array;
+        CUDA_CHECK(cudaGraphicsSubResourceGetMappedArray(
+            &array,
+            texture,
+            0,
+            0
+        ));
+
+        cudaResourceDesc desc{};
+        desc.resType = cudaResourceTypeArray;
+        desc.res.array.array = array;
+
+        cudaSurfaceObject_t surface;
+        CUDA_CHECK(cudaCreateSurfaceObject(&surface, &desc));
+
+        constexpr dim3 block(16, 16);
+
+        const dim3 grid(
+            (width + block.x - 1) / block.x,
+            (height + block.y - 1) / block.y
+        );
+
+        CastRayKernel<<<grid, block>>>(surface, width, height, camera);
+
+        CUDA_CHECK(cudaDeviceSynchronize());
+
+        CUDA_CHECK(cudaDestroySurfaceObject(surface));
+        CUDA_CHECK(cudaGraphicsUnmapResources(1, &texture));
     }
 } // namespace CudaRaytracer

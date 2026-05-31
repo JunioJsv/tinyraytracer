@@ -1,33 +1,12 @@
+#include <memory>
 #include <raylib.h>
-#include <vector>
 
 #include "camera_controller.h"
-#include "cuda/cuda_raytracer.h"
+#include "render/render_v2.h"
 
 namespace
 {
     CameraController camera;
-
-    void Render(
-        const Image &image
-    )
-    {
-        CudaRaytracer::Render(static_cast<uint32_t *>(image.data),
-                              image.width, image.height, camera.GetState());
-    }
-
-    void UpdateDrawFrame(
-        const Image &image,
-        const Texture2D &texture
-    )
-    {
-        BeginDrawing();
-        Render(image);
-        UpdateTexture(texture, image.data);
-        DrawTexture(texture, 0, 0, WHITE);
-        DrawFPS(10, 10);
-        EndDrawing();
-    }
 
     void UpdateCamera(
         const float deltaTime
@@ -53,15 +32,10 @@ int main()
     DisableCursor();
 
     const int width = GetScreenWidth(), height = GetScreenHeight();
-    std::vector<uint32_t> pixels(width * height);
-
-    const Image image{pixels.data(), width, height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
-    const Texture2D texture{LoadTextureFromImage(image)};
+    const std::unique_ptr<IRender> render = std::make_unique<RenderV2>(width, height, camera);
 
     while (!WindowShouldClose()) {
         UpdateCamera(GetFrameTime());
-        UpdateDrawFrame(image, texture);
+        render->Draw();
     }
-
-    UnloadTexture(texture);
 }

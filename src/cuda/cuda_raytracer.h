@@ -10,6 +10,7 @@
 #define HD __host__ __device__
 
 struct CameraState;
+struct cudaGraphicsResource;
 
 namespace CudaRaytracer
 {
@@ -147,8 +148,21 @@ namespace CudaRaytracer
         const Sphere &s
     );
 
-    __host__ int Render(
+    __host__ void Setup();
+
+    __host__ void Render(
         uint32_t *output,
+        int width,
+        int height,
+        const CameraState &camera
+    );
+
+    __host__ cudaGraphicsResource *SetupCudaTexture(
+        unsigned int glTextureId
+    );
+
+    __host__ void Render(
+        cudaGraphicsResource *texture,
         int width,
         int height,
         const CameraState &camera

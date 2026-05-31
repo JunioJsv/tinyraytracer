@@ -24,7 +24,7 @@ endif ()
 
 add_subdirectory(external/raylib)
 
-file(GLOB SOURCES src/*.cpp src/cuda/*.cu)
+file(GLOB SOURCES src/*.cpp src/render/*.cpp src/cuda/*.cu)
 add_executable(${PROJECT_NAME} ${SOURCES})
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES all)
 target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart raylib)
