@@ -1,36 +1,29 @@
 #include <raylib.h>
+#include <vector>
 
 #include "camera_controller.h"
 #include "cuda/cuda_raytracer.h"
 
 namespace
 {
-    constexpr unsigned int WIDTH = 800;
-    constexpr unsigned int HEIGHT = 600;
-
-    uint32_t pixels[WIDTH][HEIGHT];
     CameraController camera;
 
-    Texture2D SetupTexture()
-    {
-        constexpr Image image{pixels, WIDTH, HEIGHT, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
-        return LoadTextureFromImage(image);
-    }
-
     void Render(
-        const Texture2D &texture
+        const Image &image
     )
     {
-        CudaRaytracer::Render(&pixels[0][0], WIDTH, HEIGHT, camera.GetState());
-        UpdateTexture(texture, pixels);
+        CudaRaytracer::Render(static_cast<uint32_t *>(image.data),
+                              image.width, image.height, camera.GetState());
     }
 
     void UpdateDrawFrame(
+        const Image &image,
         const Texture2D &texture
     )
     {
         BeginDrawing();
-        Render(texture);
+        Render(image);
+        UpdateTexture(texture, image.data);
         DrawTexture(texture, 0, 0, WHITE);
         DrawFPS(10, 10);
         EndDrawing();
@@ -41,7 +34,7 @@ namespace
     )
     {
         CameraInput input{};
-        Vector2 mouseDelta(GetMouseDelta());
+        const Vector2 mouseDelta(GetMouseDelta());
         input.moveForward = IsKeyDown(KEY_W);
         input.moveBackward = IsKeyDown(KEY_S);
         input.moveLeft = IsKeyDown(KEY_A);
@@ -56,15 +49,18 @@ namespace
 
 int main()
 {
-    InitWindow(WIDTH, HEIGHT, "Tiny Raytracer");
-
+    InitWindow(1280, 720, "Tiny Raytracer");
     DisableCursor();
 
-    const Texture2D texture(SetupTexture());
+    const int width = GetScreenWidth(), height = GetScreenHeight();
+    std::vector<uint32_t> pixels(width * height);
+
+    const Image image{pixels.data(), width, height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
+    const Texture2D texture{LoadTextureFromImage(image)};
 
     while (!WindowShouldClose()) {
         UpdateCamera(GetFrameTime());
-        UpdateDrawFrame(texture);
+        UpdateDrawFrame(image, texture);
     }
 
     UnloadTexture(texture);
