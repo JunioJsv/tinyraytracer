@@ -1,12 +1,14 @@
 #ifndef CAMERA_CONTROLLER_H
 #define CAMERA_CONTROLLER_H
 
+#include <string>
+
 #include "camera_state.h"
 
 class CameraController
 {
 public:
-    CameraController() = default;
+    CameraController();
 
     void Update(
         const CameraInput &input,
@@ -18,8 +20,21 @@ public:
         return state;
     }
 
+    [[nodiscard]] std::string ToString() const;
+
 private:
-    CameraState state;
+    void UpdateMovement(
+        const CameraInput &input,
+        float deltaTime
+    );
+
+    void UpdateAxis(
+        const CameraInput &input
+    );
+
+    void UpdateDirections();
+
+    CameraState state{};
 };
 
 #endif // !CAMERA_CONTROLLER_H

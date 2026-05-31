@@ -21,8 +21,7 @@ namespace
         const Texture2D &texture
     )
     {
-        const auto &[position, pitch, yaw] = camera.GetState();
-        CudaRaytracer::Render(&pixels[0][0], WIDTH, HEIGHT, position, pitch, yaw);
+        CudaRaytracer::Render(&pixels[0][0], WIDTH, HEIGHT, camera.GetState());
         UpdateTexture(texture, pixels);
     }
 
@@ -67,4 +66,6 @@ int main()
         UpdateCamera(GetFrameTime());
         UpdateDrawFrame(texture);
     }
+
+    UnloadTexture(texture);
 }

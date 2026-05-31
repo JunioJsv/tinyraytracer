@@ -9,55 +9,57 @@
 #endif
 #define HD __host__ __device__
 
+struct CameraState;
+
 namespace CudaRaytracer
 {
     struct Vec3
     {
         float x, y, z;
 
-        HD float &Vec3::operator[](
+        HD float &operator[](
             const int i
         )
         {
             return i == 0 ? x : (1 == i ? y : z);
         }
 
-        HD const float &Vec3::operator[](
+        HD const float &operator[](
             const int i
         ) const
         {
             return i == 0 ? x : (1 == i ? y : z);
         }
 
-        HD Vec3 Vec3::operator*(
+        HD Vec3 operator*(
             const float v
         ) const
         {
             return {x * v, y * v, z * v};
         }
 
-        HD float Vec3::operator*(
+        HD float operator*(
             const Vec3 &v
         ) const
         {
             return x * v.x + y * v.y + z * v.z;
         }
 
-        HD Vec3 Vec3::operator+(
+        HD Vec3 operator+(
             const Vec3 &v
         ) const
         {
             return {x + v.x, y + v.y, z + v.z};
         }
 
-        HD Vec3 Vec3::operator-(
+        HD Vec3 operator-(
             const Vec3 &v
         ) const
         {
             return {x - v.x, y - v.y, z - v.z};
         }
 
-        HD Vec3 Vec3::operator-() const
+        HD Vec3 operator-() const
         {
             return {-x, -y, -z};
         }
@@ -82,7 +84,7 @@ namespace CudaRaytracer
             return *this;
         }
 
-        HD float Norm() const;
+        HD float Length() const;
 
         HD Vec3 Normalized() const;
 
@@ -149,9 +151,7 @@ namespace CudaRaytracer
         uint32_t *output,
         int width,
         int height,
-        const Vec3 &position,
-        float pitch,
-        float yaw
+        const CameraState &camera
     );
 } // namespace CudaRaytracer
 

@@ -6,11 +6,11 @@ enable_language(CUDA)
 include(CheckLanguage)
 check_language(CUDA)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED True)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 find_package(CUDAToolkit REQUIRED)
@@ -26,7 +26,7 @@ add_subdirectory(external/raylib)
 
 file(GLOB SOURCES src/*.cpp src/cuda/*.cu)
 add_executable(${PROJECT_NAME} ${SOURCES})
-set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 75)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES all)
 target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart raylib)
 
 install(TARGETS ${PROJECT_NAME})

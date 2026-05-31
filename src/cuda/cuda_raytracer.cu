@@ -3,6 +3,8 @@
 #include <device_launch_parameters.h>
 #include <iostream>
 
+#include "../camera_state.h"
+
 #define CUDA_CHECK(call)                                                                                               \
     {                                                                                                                  \
         const cudaError_t error = call;                                                                                \
@@ -34,14 +36,18 @@ namespace CudaRaytracer
     __device__ __constant__ Sphere GPU_SPHERES[N_SPHERES];
     __device__ __constant__ Vec3 GPU_LIGHTS[N_LIGHTS];
 
-    float Vec3::Norm() const
+    float Vec3::Length() const
     {
         return sqrtf(x * x + y * y + z * z);
     }
 
     Vec3 Vec3::Normalized() const
     {
-        return (*this) * (1.f / Norm());
+        if (const float length = Length(); length > 1e-6) {
+            return *this * (1.f / length);
+        }
+
+        return {0, 0, 0};
     }
 
     Vec3 Vec3::Rotated(
@@ -108,12 +114,12 @@ namespace CudaRaytracer
         return {false, 0};
     }
 
-    static __device__ std::tuple<bool, Vec3, Vec3, Material> SceneIntersect(
+    __device__ std::tuple<bool, Vec3, Vec3, Material> SceneIntersect(
         const Vec3 &orig,
         const Vec3 &dir
     )
     {
-        Vec3 pt, N;
+        Vec3 pt{}, N{};
         Material material{};
 
         float nearestDist = 1e10f;
@@ -150,7 +156,7 @@ namespace CudaRaytracer
         return {nearestDist < 1000.f, pt, N, material};
     }
 
-    static __device__ Vec3 CastRay(
+    __device__ Vec3 CastRay(
         const Vec3 &orig,
         const Vec3 &dir,
         const int maxDepth
@@ -186,7 +192,7 @@ namespace CudaRaytracer
                 Vec3 lightDir = (light - point).Normalized();
 
                 auto [hit_shadow, shadow_pt, trashnrm, trashmat] = SceneIntersect(point, lightDir);
-                if (hit_shadow && (shadow_pt - point).Norm() < (light - point).Norm())
+                if (hit_shadow && (shadow_pt - point).Length() < (light - point).Length())
                     continue;
 
                 diffuseLightIntensity += fmaxf(0.f, lightDir * N);
@@ -213,11 +219,11 @@ namespace CudaRaytracer
                 if (material.albedo[3] > 0.01f) {
                     Vec3 refractDir = Refract(current.dir, N, material.refractiveIdx, 1.0f);
 
-                    if (refractDir.Norm() > 0.1f) {
+                    if (refractDir.Length() > 0.1f) {
                         refractDir = refractDir.Normalized();
 
                         const float dotProduct = current.dir * N;
-                        Vec3 refractOrig;
+                        Vec3 refractOrig{};
                         if (dotProduct < 0) {
                             refractOrig = point - N * offset;
                         } else {
@@ -238,31 +244,29 @@ namespace CudaRaytracer
         return finalColor;
     }
 
-    static __global__ void CastRayKernal(
+    __global__ void CastRayKernal(
         uint32_t *pixels,
         const int width,
         const int height,
-        const Vec3 position,
-        const float pitch,
-        const float yaw
+        const CameraState camera
     )
     {
         const unsigned int pixelIdx = blockIdx.x * blockDim.x + threadIdx.x;
         if (pixelIdx >= width * height)
             return;
 
-        const int i = pixelIdx % width;
-        const int j = pixelIdx / width;
-
-        constexpr float fov = 1.05;
+        const unsigned int i = pixelIdx % width;
+        const unsigned int j = pixelIdx / width;
 
         const float dirX = (i + 0.5f) - width / 2.f;
         const float dirY = -(j + 0.5f) + height / 2.f;
-        const float dirZ = -height / (2.f * tanf(fov / 2.f));
+        const float dirZ = -height / (2.f * tanf(camera.fov / 2.f));
 
-        const Vec3 dir = Vec3{dirX, dirY, dirZ}.Normalized().Rotated(pitch, yaw);
+        const Vec3 dir = (camera.forward * -dirZ +
+                          camera.right * dirX +
+                          camera.up * dirY).Normalized();
 
-        const auto [x, y, z] = CastRay(position, dir, 4);
+        const auto [x, y, z] = CastRay(camera.position, dir, 4);
         const auto r = static_cast<unsigned char>(fminf(fmaxf(x * 255.0f, 0.0f), 255.0f));
         const auto g = static_cast<unsigned char>(fminf(fmaxf(y * 255.0f, 0.0f), 255.0f));
         const auto b = static_cast<unsigned char>(fminf(fmaxf(z * 255.0f, 0.0f), 255.0f));
@@ -274,9 +278,7 @@ namespace CudaRaytracer
         uint32_t *output,
         const int width,
         const int height,
-        const Vec3 &position,
-        const float pitch,
-        const float yaw
+        const CameraState &camera
     )
     {
         uint32_t *pixels = nullptr;
@@ -290,7 +292,7 @@ namespace CudaRaytracer
         const int nBlocks = (width * height + BLOCK_SIZE - 1) / BLOCK_SIZE;
         CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 16384));
 
-        CastRayKernal<<<nBlocks, BLOCK_SIZE>>>(pixels, width, height, position, pitch, yaw);
+        CastRayKernal<<<nBlocks, BLOCK_SIZE>>>(pixels, width, height, camera);
 
         CUDA_CHECK(cudaDeviceSynchronize());
 
