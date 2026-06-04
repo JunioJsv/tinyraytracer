@@ -20,8 +20,11 @@ namespace
         input.moveRight = IsKeyDown(KEY_D);
         input.moveUp = IsKeyDown(KEY_SPACE);
         input.moveDown = IsKeyDown(KEY_LEFT_CONTROL);
+        input.walk = IsKeyDown(KEY_LEFT_ALT);
+        input.sprint = IsKeyDown(KEY_LEFT_SHIFT);
         input.mouseDeltaX = mouseDelta.x;
         input.mouseDeltaY = mouseDelta.y;
+        input.mouseWheelDelta = GetMouseWheelMove();
         camera.Update(input, deltaTime);
     }
 } // namespace

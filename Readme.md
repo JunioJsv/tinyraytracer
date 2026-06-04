@@ -1,5 +1,18 @@
 ![](https://raw.githubusercontent.com/JunioJsv/tinyraytracer/master/out.png)
 
+### Camera Controls
+
+| Input             | Action                      |
+| ----------------- | --------------------------- |
+| **W / A / S / D** | Move camera                 |
+| **Space**         | Move up                     |
+| **Left Ctrl**     | Move down                   |
+| **Left Alt**      | Walk                        |
+| **Left Shift**    | Sprint                      |
+| **Mouse Move**    | Rotate camera (Yaw / Pitch) |
+| **Mouse Wheel**   | Adjust Field of View (FOV)  |
+
+
 ## Requirements
 CMake 3.16 or higher
 C++20 compatible compiler:

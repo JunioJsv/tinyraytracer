@@ -27,8 +27,12 @@ struct CameraInput
     bool moveUp;
     bool moveDown;
 
+    bool walk;
+    bool sprint;
+
     float mouseDeltaX;
     float mouseDeltaY;
+    float mouseWheelDelta;
 };
 
 #endif // !CAMERA_STATE_H

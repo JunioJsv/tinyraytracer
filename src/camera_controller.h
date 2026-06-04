@@ -1,6 +1,7 @@
 #ifndef CAMERA_CONTROLLER_H
 #define CAMERA_CONTROLLER_H
 
+#include <raylib.h>
 #include <string>
 
 #include "camera_state.h"
@@ -22,6 +23,14 @@ public:
 
     [[nodiscard]] std::string ToString() const;
 
+    static constexpr float DEFAULT_FOV = 90.f * DEG2RAD;
+    static constexpr float MAX_FOV = 120.f * DEG2RAD;
+    static constexpr float MIN_FOV = .5f * DEG2RAD;
+
+    static constexpr float PITCH_LIMIT = 89.f * DEG2RAD;
+    static constexpr float YAW_LIMIT = 360.f * DEG2RAD;
+    static constexpr float MOUSE_SENSITIVITY = 16.f * DEG2RAD;
+
 private:
     void UpdateMovement(
         const CameraInput &input,
@@ -29,7 +38,13 @@ private:
     );
 
     void UpdateAxis(
-        const CameraInput &input
+        const CameraInput &input,
+        float deltaTime
+    );
+
+    void UpdateAttributes(
+        const CameraInput &input,
+        float deltaTime
     );
 
     void UpdateDirections();

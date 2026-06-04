@@ -4,11 +4,10 @@
 #include "camera_controller.h"
 
 #include <algorithm>
-#include <raylib.h>
 
 CameraController::CameraController()
 {
-    state.fov = 90.0f * DEG2RAD;
+    state.fov = DEFAULT_FOV;
 }
 
 void CameraController::Update(
@@ -16,8 +15,9 @@ void CameraController::Update(
     const float deltaTime
 )
 {
-    UpdateAxis(input);
+    UpdateAxis(input, deltaTime);
     UpdateMovement(input, deltaTime);
+    UpdateAttributes(input, deltaTime);
 }
 
 void CameraController::UpdateMovement(
@@ -25,7 +25,14 @@ void CameraController::UpdateMovement(
     const float deltaTime
 )
 {
-    const float speed = 10.f * deltaTime;
+    float speed = 10.f * deltaTime;
+    if (input.walk) {
+        speed *= 0.2;
+    }
+
+    if (input.sprint) {
+        speed *= 3;
+    }
 
     CudaRaytracer::Vec3 movement{};
     if (input.moveForward) {
@@ -51,19 +58,26 @@ void CameraController::UpdateMovement(
 }
 
 void CameraController::UpdateAxis(
-    const CameraInput &input
+    const CameraInput &input,
+    const float deltaTime
 )
 {
-    constexpr float PITCH_LIMIT = 89.f * DEG2RAD;
-    constexpr float YAW_LIMIT = 360.f * DEG2RAD;
-    constexpr float SENSITIVITY = 0.1f * DEG2RAD;
-
-    state.yaw -= input.mouseDeltaX * SENSITIVITY;
-    state.pitch -= input.mouseDeltaY * SENSITIVITY;
+    state.yaw -= input.mouseDeltaX * MOUSE_SENSITIVITY * deltaTime;
+    state.pitch -= input.mouseDeltaY * MOUSE_SENSITIVITY * deltaTime;
 
     state.yaw = std::fmod(state.yaw, YAW_LIMIT);
     state.pitch = std::clamp(state.pitch, -PITCH_LIMIT, PITCH_LIMIT);
     UpdateDirections();
+}
+
+void CameraController::UpdateAttributes(
+    const CameraInput &input,
+    const float deltaTime
+)
+{
+    if (const float factor = -input.mouseWheelDelta * 8 * deltaTime; factor != 0) {
+        state.fov = std::clamp(state.fov + factor, MIN_FOV, MAX_FOV);
+    }
 }
 
 void CameraController::UpdateDirections()
