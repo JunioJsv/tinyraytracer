@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(tinyraytracer LANGUAGES CXX CUDA)
 
+include(GNUInstallDirs)
+
 enable_language(CUDA)
 
 include(CheckLanguage)
@@ -29,11 +31,17 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES all)
 target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart raylib)
 
-add_custom_command(
-        TARGET ${PROJECT_NAME} POST_BUILD
+add_custom_target(copy_resources ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/resources
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>/resources
+        "${CMAKE_SOURCE_DIR}/resources"
+        "${CMAKE_BINARY_DIR}/resources"
 )
 
-install(TARGETS ${PROJECT_NAME})
+add_dependencies(${PROJECT_NAME} copy_resources)
+
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(
+        DIRECTORY ${CMAKE_SOURCE_DIR}/resources
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
