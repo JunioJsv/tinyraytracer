@@ -20,6 +20,8 @@
 
 namespace CudaRaytracer
 {
+    constexpr float PI = 3.14159265358979323846f;
+
     constexpr Material IVORY = {1.0, {0.9, 0.5, 0.1, 0.0}, {0.4, 0.4, 0.3}, 50.};
     constexpr Material GLASS = {1.5, {0.0, 0.9, 0.1, 0.8}, {0.6, 0.7, 0.8}, 125.};
     constexpr Material RED_RUBBER = {1.0, {1.4, 0.3, 0.0, 0.0}, {0.3, 0.1, 0.1}, 10.};
@@ -38,6 +40,7 @@ namespace CudaRaytracer
 
     __device__ __constant__ Sphere GPU_SPHERES[N_SPHERES];
     __device__ __constant__ Vec3 GPU_LIGHTS[N_LIGHTS];
+    __device__ __constant__ Background GPU_BACKGROUND;
 
     float Vec3::Length() const
     {
@@ -53,25 +56,35 @@ namespace CudaRaytracer
         return {0, 0, 0};
     }
 
-    Vec3 Vec3::Rotated(
-        const float pitch,
-        const float yaw
-    ) const
-    {
-        const float cosPitch = cosf(pitch);
-        const float sinPitch = sinf(pitch);
-        const Vec3 vPitch = {x, y * cosPitch - z * sinPitch, y * sinPitch + z * cosPitch};
-
-        const float cosYaw = cosf(yaw);
-        const float sinYaw = sinf(yaw);
-        return {vPitch.x * cosYaw + vPitch.z * sinYaw, vPitch.y, -vPitch.x * sinYaw + vPitch.z * cosYaw};
-    }
-
     Vec3 Vec3::Cross(
         const Vec3 v
     ) const
     {
         return {y * v.z - z * v.y, z * v.x - x * v.z, x * v.y - y * v.x};
+    }
+
+    Vec3 Background::GetColor(
+        const Vec3 &dir
+    ) const
+    {
+        if (data == nullptr || width <= 0 || height <= 0) {
+            return {0.2f, 0.7f, 0.8f};
+        }
+
+        const float u = atan2(dir.z, dir.x) / (2.0f * PI) + 0.5f;
+        const float v = acos(fmin(fmax(dir.y, -1.0f), 1.0f)) / PI;
+
+        const int x = static_cast<int>(u * static_cast<float>(width - 1));
+
+        const int y = static_cast<int>(v * static_cast<float>(height - 1));
+
+        const data_t color = data[y * width + x];
+
+        const float r = static_cast<float>(color & 0xff) / 255.0f;
+        const float g = static_cast<float>(color >> 8 & 0xff) / 255.0f;
+        const float b = static_cast<float>(color >> 16 & 0xff) / 255.0f;
+
+        return {r, g, b};
     }
 
     Vec3 Reflect(
@@ -121,7 +134,47 @@ namespace CudaRaytracer
     {
         CUDA_CHECK(cudaMemcpyToSymbol(GPU_SPHERES, CPU_SPHERES, N_SPHERES * sizeof(Sphere)));
         CUDA_CHECK(cudaMemcpyToSymbol(GPU_LIGHTS, CPU_LIGHTS, N_LIGHTS * sizeof(Vec3)));
-        CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 16384));
+        CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 4096));
+    }
+
+    void SetBackground(
+        const Background &background
+    )
+    {
+        Background::data_t *data;
+
+        cudaMalloc(
+            &data,
+            background.width * background.height * sizeof(Background::data_t)
+        );
+
+        cudaMemcpy(
+            data,
+            background.data,
+            background.width * background.height * sizeof(Background::data_t),
+            cudaMemcpyHostToDevice
+        );
+
+        Background copy(background);
+        copy.data = data;
+
+        CUDA_CHECK(cudaMemcpyToSymbol(GPU_BACKGROUND, &copy,sizeof(Background)));
+    }
+
+    cudaGraphicsResource *SetupCudaTexture(
+        const unsigned int glTextureId
+    )
+    {
+        cudaGraphicsResource *texture;
+
+        CUDA_CHECK(cudaGraphicsGLRegisterImage(
+            &texture,
+            glTextureId,
+            GL_TEXTURE_2D,
+            cudaGraphicsRegisterFlagsSurfaceLoadStore
+        ));
+
+        return texture;
     }
 
     __device__ std::tuple<bool, Vec3, Vec3, Material> SceneIntersect(
@@ -190,7 +243,7 @@ namespace CudaRaytracer
             auto [hit, point, N, material] = SceneIntersect(current.orig, current.dir);
 
             if (!hit) {
-                Vec3 backgroundColor = {0.2f, 0.7f, 0.8f};
+                Vec3 backgroundColor = GPU_BACKGROUND.GetColor(current.dir);
                 finalColor = finalColor + backgroundColor * current.weight;
                 continue;
             }
@@ -255,17 +308,15 @@ namespace CudaRaytracer
     }
 
     __device__ Vec3 GetCastRayKernalDir(
-        const unsigned int pixelIdx,
+        const unsigned int x,
+        const unsigned int y,
         const int width,
         const int height,
         const CameraState &camera
     )
     {
-        const unsigned int i = pixelIdx % width;
-        const unsigned int j = pixelIdx / width;
-
-        const float dirX = (i + 0.5f) - width / 2.f;
-        const float dirY = -(j + 0.5f) + height / 2.f;
+        const float dirX = (x + 0.5f) - width / 2.f;
+        const float dirY = -(y + 0.5f) + height / 2.f;
         const float dirZ = -height / (2.f * tanf(camera.fov / 2.f));
 
         return (camera.forward * -dirZ +
@@ -275,17 +326,18 @@ namespace CudaRaytracer
 
     __device__ std::tuple<unsigned char, unsigned char, unsigned char>
     CastRay(
-        const unsigned int pixelIdx,
+        const unsigned int x,
+        const unsigned int y,
         const int width,
         const int height,
         const CameraState &camera
     )
     {
-        const Vec3 dir = GetCastRayKernalDir(pixelIdx, width, height, camera);
-        const auto [x, y, z] = CastRay(camera.position, dir, 4);
-        const auto r = static_cast<unsigned char>(fminf(fmaxf(x * 255.0f, 0.0f), 255.0f));
-        const auto g = static_cast<unsigned char>(fminf(fmaxf(y * 255.0f, 0.0f), 255.0f));
-        const auto b = static_cast<unsigned char>(fminf(fmaxf(z * 255.0f, 0.0f), 255.0f));
+        const Vec3 dir = GetCastRayKernalDir(x, y, width, height, camera);
+        const Vec3 color = CastRay(camera.position, dir, 4);
+        const auto r = static_cast<unsigned char>(fminf(fmaxf(color.x * 255.0f, 0.0f), 255.0f));
+        const auto g = static_cast<unsigned char>(fminf(fmaxf(color.y * 255.0f, 0.0f), 255.0f));
+        const auto b = static_cast<unsigned char>(fminf(fmaxf(color.z * 255.0f, 0.0f), 255.0f));
 
         return {r, g, b};
     }
@@ -297,17 +349,12 @@ namespace CudaRaytracer
         const CameraState camera
     )
     {
-        const int x = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
+        const unsigned int pixelIdx = y * width + x;
 
-        const int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-        if (x >= width || y >= height)
-            return;
-
-        const int pixelIdx = y * width + x;
-
-        const auto [r, g, b] = CastRay(pixelIdx, width, height, camera);
-        const uint32_t color = (255 << 24) | b << 16 | g << 8 | r;
+        const auto [r, g, b] = CastRay(x, y, width, height, camera);
+        const uint32_t color = 255 << 24 | b << 16 | g << 8 | r;
         pixels[pixelIdx] = color;
     }
 
@@ -318,16 +365,10 @@ namespace CudaRaytracer
         const CameraState camera
     )
     {
-        const int x = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-        const int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-        if (x >= width || y >= height)
-            return;
-
-        const int pixelIdx = y * width + x;
-
-        const auto [r, g, b] = CastRay(pixelIdx, width, height, camera);
+        const auto [r, g, b] = CastRay(x, y, width, height, camera);
         const uchar4 pixel = make_uchar4(r, g, b, 255);
 
         surf2Dwrite(
@@ -347,7 +388,7 @@ namespace CudaRaytracer
     {
         uint32_t *pixels = nullptr;
         const size_t pixelsBytes = width * height * sizeof(uint32_t);
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&pixels), pixelsBytes));
+        CUDA_CHECK(cudaMalloc(&pixels, pixelsBytes));
 
         constexpr dim3 block(16, 16);
 
@@ -363,22 +404,6 @@ namespace CudaRaytracer
         CUDA_CHECK(cudaMemcpy(output, pixels, pixelsBytes, cudaMemcpyDeviceToHost));
 
         CUDA_CHECK(cudaFree(pixels));
-    }
-
-    cudaGraphicsResource *SetupCudaTexture(
-        const unsigned int glTextureId
-    )
-    {
-        cudaGraphicsResource *texture;
-
-        CUDA_CHECK(cudaGraphicsGLRegisterImage(
-            &texture,
-            glTextureId,
-            GL_TEXTURE_2D,
-            cudaGraphicsRegisterFlagsSurfaceLoadStore
-        ));
-
-        return texture;
     }
 
     void Render(

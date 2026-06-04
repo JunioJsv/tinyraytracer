@@ -54,7 +54,7 @@ void CameraController::UpdateAxis(
     const CameraInput &input
 )
 {
-    constexpr float PITCH_LIMIT = 90.f * DEG2RAD;
+    constexpr float PITCH_LIMIT = 89.f * DEG2RAD;
     constexpr float YAW_LIMIT = 360.f * DEG2RAD;
     constexpr float SENSITIVITY = 0.1f * DEG2RAD;
 

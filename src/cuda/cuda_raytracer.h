@@ -89,11 +89,6 @@ namespace CudaRaytracer
 
         HD Vec3 Normalized() const;
 
-        HD Vec3 Rotated(
-            float pitch,
-            float yaw
-        ) const;
-
         HD Vec3 Cross(
             Vec3 v
         ) const;
@@ -113,6 +108,19 @@ namespace CudaRaytracer
         int depth;
         float weight;
         RayType rayType;
+    };
+
+    struct Background
+    {
+        using data_t = uint32_t;
+
+        data_t *data;
+        int width;
+        int height;
+
+        HD Vec3 GetColor(
+            const Vec3 &dir
+        ) const;
     };
 
     struct Material
@@ -150,15 +158,19 @@ namespace CudaRaytracer
 
     __host__ void Setup();
 
+    __host__ void SetBackground(
+        const Background &background
+    );
+
+    __host__ cudaGraphicsResource *SetupCudaTexture(
+        unsigned int glTextureId
+    );
+
     __host__ void Render(
         uint32_t *output,
         int width,
         int height,
         const CameraState &camera
-    );
-
-    __host__ cudaGraphicsResource *SetupCudaTexture(
-        unsigned int glTextureId
     );
 
     __host__ void Render(

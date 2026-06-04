@@ -1,14 +1,14 @@
 #ifndef RENDER_V1_H
 #define RENDER_V1_H
 
-#include "irender.h"
+#include "base_render.h"
 
 #include <raylib.h>
 #include <vector>
 
 #include "../camera_controller.h"
 
-class RenderV1 final : public IRender
+class RenderV1 final : public BaseRender
 {
 public:
     RenderV1(

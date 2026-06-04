@@ -7,10 +7,7 @@ RenderV2::RenderV2(
 ) : camera(camera)
   , texture(LoadTextureFromImage(
       {nullptr, width, height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8}))
-  , cudaTexture(CudaRaytracer::SetupCudaTexture(texture.id))
-{
-    Initialize();
-}
+  , cudaTexture(CudaRaytracer::SetupCudaTexture(texture.id)) {}
 
 RenderV2::~RenderV2()
 {
@@ -22,6 +19,6 @@ void RenderV2::Draw()
     BeginDrawing();
     CudaRaytracer::Render(cudaTexture, texture.width, texture.height, camera.GetState());
     DrawTexture(texture, 0, 0, WHITE);
-    DrawFPS(10, 10);
+    DrawGUI();
     EndDrawing();
 }

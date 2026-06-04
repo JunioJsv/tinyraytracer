@@ -7,10 +7,7 @@ RenderV1::RenderV1(
 ) : pixels(width * height)
   , camera(camera)
   , image(pixels.data(), width, height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8)
-  , texture(LoadTextureFromImage(image))
-{
-    Initialize();
-}
+  , texture(LoadTextureFromImage(image)) {}
 
 RenderV1::~RenderV1()
 {
@@ -24,6 +21,6 @@ void RenderV1::Draw()
                           image.width, image.height, camera.GetState());
     UpdateTexture(texture, image.data);
     DrawTexture(texture, 0, 0, WHITE);
-    DrawFPS(10, 10);
+    DrawGUI();
     EndDrawing();
 }

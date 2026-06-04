@@ -28,11 +28,12 @@ namespace
 
 int main()
 {
-    InitWindow(1280, 720, "Tiny Raytracer");
+    InitWindow(1024, 720, "Tiny Raytracer");
     DisableCursor();
 
     const int width = GetScreenWidth(), height = GetScreenHeight();
-    const std::unique_ptr<IRender> render = std::make_unique<RenderV2>(width, height, camera);
+    const std::unique_ptr<BaseRender> render = std::make_unique<RenderV2>(width, height, camera);
+    render->SetBackground("resources/background.png");
 
     while (!WindowShouldClose()) {
         UpdateCamera(GetFrameTime());
