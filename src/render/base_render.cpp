@@ -1,7 +1,5 @@
 #include "base_render.h"
 
-#include <raylib.h>
-
 void BaseRender::SetBackground(
     const std::string &fileName
 )

@@ -8,6 +8,17 @@ namespace
 {
     CameraController camera;
 
+    void HandleInputs(
+        BaseRender &render
+    )
+    {
+        if (IsKeyPressed(KEY_F)) {
+            ToggleFullscreen();
+            const int width = GetScreenWidth(), height = GetScreenHeight();
+            render.Resize(width, height);
+        }
+    }
+
     void UpdateCamera(
         const float deltaTime
     )
@@ -41,5 +52,6 @@ int main()
     while (!WindowShouldClose()) {
         UpdateCamera(GetFrameTime());
         render->Draw();
+        HandleInputs(*render);
     }
 }

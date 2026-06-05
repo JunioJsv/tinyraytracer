@@ -6,7 +6,7 @@ RenderV1::RenderV1(
     const CameraController &camera
 ) : pixels(width * height)
   , camera(camera)
-  , image(pixels.data(), width, height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8)
+  , image(SetupImage(pixels.data(), width, height))
   , texture(LoadTextureFromImage(image)) {}
 
 RenderV1::~RenderV1()
@@ -23,4 +23,16 @@ void RenderV1::Draw()
     DrawTexture(texture, 0, 0, WHITE);
     DrawGUI();
     EndDrawing();
+}
+
+void RenderV1::Resize(
+    const int width,
+    const int height
+)
+{
+    UnloadTexture(texture);
+    pixels.clear();
+    pixels.resize(width * height);
+    image = SetupImage(pixels.data(), width, height);
+    texture = LoadTextureFromImage(image);
 }

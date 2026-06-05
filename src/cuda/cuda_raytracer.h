@@ -1,8 +1,6 @@
 #ifndef CUDA_RAYTRACER_H
 #define CUDA_RAYTRACER_H
 
-#include <tuple>
-
 #ifndef __CUDACC__
 #define __host__
 #define __device__
@@ -14,7 +12,7 @@ struct cudaGraphicsResource;
 
 namespace CudaRaytracer
 {
-    struct Vec3
+    struct alignas(16) Vec3
     {
         float x, y, z;
 
@@ -150,13 +148,21 @@ namespace CudaRaytracer
         float etaI
     );
 
-    HD std::tuple<bool, float> RaySphereIntersect(
+    struct RayIntersection
+    {
+        bool hit;
+        float distance;
+    };
+
+    HD RayIntersection RaySphereIntersect(
         const Vec3 &orig,
         const Vec3 &dir,
         const Sphere &s
     );
 
-    __host__ void Setup();
+    __host__ void Initialize();
+
+    __host__ void Destroy();
 
     __host__ void SetBackground(
         const Background &background
@@ -164,6 +170,10 @@ namespace CudaRaytracer
 
     __host__ cudaGraphicsResource *SetupCudaTexture(
         unsigned int glTextureId
+    );
+
+    __host__ void DestroyCudaTexture(
+        cudaGraphicsResource *texture
     );
 
     __host__ void Render(

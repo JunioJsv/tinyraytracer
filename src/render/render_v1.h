@@ -21,11 +21,16 @@ public:
 
     void Draw() override;
 
+    void Resize(
+        int width,
+        int height
+    ) override;
+
 private:
     std::vector<uint32_t> pixels;
     const CameraController &camera;
-    const Image image;
-    const Texture2D texture;
+    Image image;
+    Texture2D texture;
 };
 
 

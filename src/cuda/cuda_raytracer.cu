@@ -1,7 +1,6 @@
 #include "cuda_raytracer.h"
 
-#include <windows.h>
-#include <gl/GL.h>
+#include <external/glfw/deps/glad/gl.h>
 #include <cuda_gl_interop.h>
 #include <device_launch_parameters.h>
 #include <iostream>
@@ -41,6 +40,7 @@ namespace CudaRaytracer
     __device__ __constant__ Sphere GPU_SPHERES[N_SPHERES];
     __device__ __constant__ Vec3 GPU_LIGHTS[N_LIGHTS];
     __device__ __constant__ Background GPU_BACKGROUND;
+    __device__ __constant__ CameraState GPU_CAMERA;
 
     float Vec3::Length() const
     {
@@ -110,7 +110,7 @@ namespace CudaRaytracer
         return k < 0 ? Vec3{1, 0, 0} : I * eta + N * (eta * cosi - sqrtf(k));
     }
 
-    std::tuple<bool, float> RaySphereIntersect(
+    RayIntersection RaySphereIntersect(
         const Vec3 &orig,
         const Vec3 &dir,
         const Sphere &s
@@ -130,12 +130,14 @@ namespace CudaRaytracer
         return {false, 0};
     }
 
-    void Setup()
+    void Initialize()
     {
         CUDA_CHECK(cudaMemcpyToSymbol(GPU_SPHERES, CPU_SPHERES, N_SPHERES * sizeof(Sphere)));
         CUDA_CHECK(cudaMemcpyToSymbol(GPU_LIGHTS, CPU_LIGHTS, N_LIGHTS * sizeof(Vec3)));
         CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 4096));
     }
+
+    void Destroy() {}
 
     void SetBackground(
         const Background &background
@@ -177,7 +179,21 @@ namespace CudaRaytracer
         return texture;
     }
 
-    __device__ std::tuple<bool, Vec3, Vec3, Material> SceneIntersect(
+    void DestroyCudaTexture(
+        cudaGraphicsResource *texture
+    )
+    {
+        CUDA_CHECK(cudaGraphicsUnregisterResource(texture));
+    }
+
+    struct SceneIntersection
+    {
+        bool hit;
+        Vec3 pt, N;
+        Material material;
+    };
+
+    __device__ SceneIntersection SceneIntersect(
         const Vec3 &orig,
         const Vec3 &dir
     )
@@ -324,7 +340,7 @@ namespace CudaRaytracer
                 camera.up * dirY).Normalized();
     }
 
-    __device__ std::tuple<unsigned char, unsigned char, unsigned char>
+    __device__ uchar4
     CastRay(
         const unsigned int x,
         const unsigned int y,
@@ -339,37 +355,34 @@ namespace CudaRaytracer
         const auto g = static_cast<unsigned char>(fminf(fmaxf(color.y * 255.0f, 0.0f), 255.0f));
         const auto b = static_cast<unsigned char>(fminf(fmaxf(color.z * 255.0f, 0.0f), 255.0f));
 
-        return {r, g, b};
+        return make_uchar4(r, g, b, 255);
     }
 
     __global__ void CastRayKernel(
         uint32_t *pixels,
         const int width,
-        const int height,
-        const CameraState camera
+        const int height
     )
     {
         const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
         const unsigned int pixelIdx = y * width + x;
 
-        const auto [r, g, b] = CastRay(x, y, width, height, camera);
-        const uint32_t color = 255 << 24 | b << 16 | g << 8 | r;
+        const auto [r, g, b, a] = CastRay(x, y, width, height, GPU_CAMERA);
+        const uint32_t color = a << 24 | b << 16 | g << 8 | r;
         pixels[pixelIdx] = color;
     }
 
     __global__ void CastRayKernel(
         const cudaSurfaceObject_t surface,
         const int width,
-        const int height,
-        const CameraState camera
+        const int height
     )
     {
         const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-        const auto [r, g, b] = CastRay(x, y, width, height, camera);
-        const uchar4 pixel = make_uchar4(r, g, b, 255);
+        const auto pixel = CastRay(x, y, width, height, GPU_CAMERA);
 
         surf2Dwrite(
             pixel,
@@ -389,15 +402,16 @@ namespace CudaRaytracer
         uint32_t *pixels = nullptr;
         const size_t pixelsBytes = width * height * sizeof(uint32_t);
         CUDA_CHECK(cudaMalloc(&pixels, pixelsBytes));
+        CUDA_CHECK(cudaMemcpyToSymbol(GPU_CAMERA, &camera, sizeof(CameraState)));
 
-        constexpr dim3 block(16, 16);
+        constexpr dim3 block(8, 8);
 
         const dim3 grid(
             (width + block.x - 1) / block.x,
             (height + block.y - 1) / block.y
         );
 
-        CastRayKernel<<<grid, block>>>(pixels, width, height, camera);
+        CastRayKernel<<<grid, block>>>(pixels, width, height);
 
         CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -413,6 +427,7 @@ namespace CudaRaytracer
         const CameraState &camera
     )
     {
+        CUDA_CHECK(cudaMemcpyToSymbol(GPU_CAMERA, &camera, sizeof(CameraState)));
         CUDA_CHECK(cudaGraphicsMapResources(1, &texture));
 
         cudaArray_t array;
@@ -430,14 +445,14 @@ namespace CudaRaytracer
         cudaSurfaceObject_t surface;
         CUDA_CHECK(cudaCreateSurfaceObject(&surface, &desc));
 
-        constexpr dim3 block(16, 16);
+        constexpr dim3 block(8, 8);
 
         const dim3 grid(
             (width + block.x - 1) / block.x,
             (height + block.y - 1) / block.y
         );
 
-        CastRayKernel<<<grid, block>>>(surface, width, height, camera);
+        CastRayKernel<<<grid, block>>>(surface, width, height);
 
         CUDA_CHECK(cudaDeviceSynchronize());
 

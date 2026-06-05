@@ -20,9 +20,14 @@ public:
 
     void Draw() override;
 
+    void Resize(
+        int width,
+        int height
+    ) override;
+
 private:
     const CameraController &camera;
-    const Texture2D texture;
+    Texture2D texture;
     cudaGraphicsResource *cudaTexture;
 };
 

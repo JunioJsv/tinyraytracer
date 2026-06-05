@@ -28,8 +28,17 @@ add_subdirectory(external/raylib)
 
 file(GLOB SOURCES src/*.cpp src/render/*.cpp src/cuda/*.cu)
 add_executable(${PROJECT_NAME} ${SOURCES})
-set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES all)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES native)
 target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart raylib)
+target_precompile_headers(${PROJECT_NAME} PRIVATE
+        <iostream>
+        <string>
+        <memory>
+        <cmath>
+        <format>
+        <algorithm>
+        <raylib.h>
+)
 
 add_custom_target(copy_resources ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
