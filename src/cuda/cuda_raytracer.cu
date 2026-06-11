@@ -63,14 +63,10 @@ namespace CudaRaytracer
         return {y * v.z - z * v.y, z * v.x - x * v.z, x * v.y - y * v.x};
     }
 
-    Vec3 Background::GetColor(
+    unsigned int Background::GetIndex(
         const Vec3 &dir
     ) const
     {
-        if (data == nullptr || width <= 0 || height <= 0) {
-            return {0.2f, 0.7f, 0.8f};
-        }
-
         const float u = atan2(dir.z, dir.x) / (2.0f * PI) + 0.5f;
         const float v = acos(fmin(fmax(dir.y, -1.0f), 1.0f)) / PI;
 
@@ -78,13 +74,49 @@ namespace CudaRaytracer
 
         const int y = static_cast<int>(v * static_cast<float>(height - 1));
 
-        const data_t color = data[y * width + x];
+        const unsigned int index = (y * width + x) * channels;
 
-        const float r = static_cast<float>(color & 0xff) / 255.0f;
-        const float g = static_cast<float>(color >> 8 & 0xff) / 255.0f;
-        const float b = static_cast<float>(color >> 16 & 0xff) / 255.0f;
+        return index;
+    }
 
-        return {r, g, b};
+    Vec3 Background::GetLDRColor(
+        const Vec3 &dir
+    ) const
+    {
+        Vec3 color{};
+        const uint8_t *channel = static_cast<uint8_t *>(data) + GetIndex(dir);
+
+        if (channels > 0) {
+            color.x = static_cast<float>(channel[0]) / 255.f;
+        }
+        if (channels > 1) {
+            color.y = static_cast<float>(channel[1]) / 255.f;
+        }
+        if (channels > 2) {
+            color.z = static_cast<float>(channel[2]) / 255.f;
+        }
+
+        return color;
+    }
+
+    Vec3 Background::GetHDRColor(
+        const Vec3 &dir
+    ) const
+    {
+        Vec3 color{};
+        const float *channel = static_cast<float *>(data) + GetIndex(dir);
+
+        if (channels > 0) {
+            color.x = channel[0];
+        }
+        if (channels > 1) {
+            color.y = channel[1];
+        }
+        if (channels > 2) {
+            color.z = channel[2];
+        }
+
+        return color;
     }
 
     Vec3 Reflect(
@@ -143,24 +175,28 @@ namespace CudaRaytracer
         const Background &background
     )
     {
-        Background::data_t *data;
+        if (GPU_BACKGROUND.data) {
+            CUDA_CHECK(cudaFree(GPU_BACKGROUND.data));
+        }
 
-        cudaMalloc(
+        void *data;
+
+        CUDA_CHECK(cudaMalloc(
             &data,
-            background.width * background.height * sizeof(Background::data_t)
-        );
+            background.GetDataSizeInBytes()
+        ));
 
-        cudaMemcpy(
+        CUDA_CHECK(cudaMemcpy(
             data,
             background.data,
-            background.width * background.height * sizeof(Background::data_t),
+            background.GetDataSizeInBytes(),
             cudaMemcpyHostToDevice
-        );
+        ));
 
         Background copy(background);
         copy.data = data;
 
-        CUDA_CHECK(cudaMemcpyToSymbol(GPU_BACKGROUND, &copy,sizeof(Background)));
+        CUDA_CHECK(cudaMemcpyToSymbol(GPU_BACKGROUND, &copy, sizeof(Background)));
     }
 
     cudaGraphicsResource *SetupCudaTexture(

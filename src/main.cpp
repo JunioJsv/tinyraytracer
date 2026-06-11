@@ -47,7 +47,7 @@ int main()
 
     const int width = GetScreenWidth(), height = GetScreenHeight();
     const std::unique_ptr<BaseRender> render = std::make_unique<RenderV2>(width, height, camera);
-    render->SetBackground("resources/background.png");
+    render->SetBackground("resources/background.hdr");
 
     while (!WindowShouldClose()) {
         UpdateCamera(GetFrameTime());

@@ -7,11 +7,16 @@ void BaseRender::SetBackground(
     Image background = LoadImage(fileName.c_str());
     if (background.data == nullptr) return;
 
-    ImageFormat(&background, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    const bool isHDR = fileName.ends_with(".hdr");
+
+    ImageFormat(&background, isHDR ? PIXELFORMAT_UNCOMPRESSED_R32G32B32 : PIXELFORMAT_UNCOMPRESSED_R8G8B8);
 
     CudaRaytracer::SetBackground({
-        static_cast<CudaRaytracer::Background::data_t *>(background.data),
-        background.width, background.height
+        background.data,
+        isHDR ? CudaRaytracer::Background::Format::RGB32F : CudaRaytracer::Background::Format::RGB8,
+        background.width,
+        background.height,
+        3 /*channels*/
     });
     UnloadImage(background);
 }

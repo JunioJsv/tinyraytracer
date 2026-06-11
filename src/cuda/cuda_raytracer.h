@@ -110,15 +110,73 @@ namespace CudaRaytracer
 
     struct Background
     {
-        using data_t = uint32_t;
+        static constexpr Vec3 DEFAULT_COLOR{0.2f, 0.7f, 0.8f};
 
-        data_t *data;
-        int width;
-        int height;
+        enum class Format
+        {
+            RGB8,
+            RGB32F
+        };
+
+        HD unsigned int GetChannelSizeInBytes() const
+        {
+            switch (format) {
+                case Format::RGB8:
+                    return sizeof(uint8_t);
+                case Format::RGB32F:
+                    return sizeof(float);
+                default:
+                    return 0;
+            }
+        }
+
+        HD unsigned int GetDataSizeInBytes() const
+        {
+            return width * height * channels * GetChannelSizeInBytes();
+        }
+
+        HD bool IsHDR() const
+        {
+            return format == Format::RGB32F;
+        }
+
+        HD bool IsValid() const
+        {
+            return data && width > 0 && height > 0 && channels > 0;
+        }
+
+        HD unsigned int GetIndex(
+            const Vec3 &dir
+        ) const;
 
         HD Vec3 GetColor(
             const Vec3 &dir
+        ) const
+        {
+            if (IsValid()) {
+                if (IsHDR()) {
+                    return GetHDRColor(dir);
+                }
+
+                return GetLDRColor(dir);
+            }
+
+            return DEFAULT_COLOR;
+        }
+
+        HD Vec3 GetLDRColor(
+            const Vec3 &dir
         ) const;
+
+        HD Vec3 GetHDRColor(
+            const Vec3 &dir
+        ) const;
+
+        void *data;
+        Format format;
+        int width;
+        int height;
+        int channels;
     };
 
     struct Material
