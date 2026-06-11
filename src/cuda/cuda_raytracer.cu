@@ -57,7 +57,7 @@ namespace CudaRaytracer
     }
 
     Vec3 Vec3::Cross(
-        const Vec3 v
+        const Vec3 &v
     ) const
     {
         return {y * v.z - z * v.y, z * v.x - x * v.z, x * v.y - y * v.x};
@@ -295,8 +295,8 @@ namespace CudaRaytracer
             auto [hit, point, N, material] = SceneIntersect(current.orig, current.dir);
 
             if (!hit) {
-                Vec3 backgroundColor = GPU_BACKGROUND.GetColor(current.dir);
-                finalColor = finalColor + backgroundColor * current.weight;
+                const Vec3 ambient = GPU_BACKGROUND.GetColor(current.dir);
+                finalColor = finalColor + ambient * current.weight;
                 continue;
             }
 
@@ -376,6 +376,31 @@ namespace CudaRaytracer
                 camera.up * dirY).Normalized();
     }
 
+    __device__ Vec3 ToneMap(
+        const Vec3 &color,
+        const float exposure = 1.0f
+    )
+    {
+        return Vec3(
+            1.0f - expf(-color.x * exposure),
+            1.0f - expf(-color.y * exposure),
+            1.0f - expf(-color.z * exposure)
+        );
+    }
+
+    __device__ Vec3 GammaCorrect(
+        const Vec3 &color,
+        const float gamma = 1.f
+    )
+    {
+        const float factor = 1.0f / gamma;
+        return Vec3(
+            powf(color.x, factor),
+            powf(color.y, factor),
+            powf(color.z, factor)
+        );
+    }
+
     __device__ uchar4
     CastRay(
         const unsigned int x,
@@ -386,7 +411,10 @@ namespace CudaRaytracer
     )
     {
         const Vec3 dir = GetCastRayKernalDir(x, y, width, height, camera);
-        const Vec3 color = CastRay(camera.position, dir, 4);
+        Vec3 color = CastRay(camera.position, dir, 4);
+        if (GPU_BACKGROUND.IsHDR()) {
+            color = GammaCorrect(ToneMap(color));
+        }
         const auto r = static_cast<unsigned char>(fminf(fmaxf(color.x * 255.0f, 0.0f), 255.0f));
         const auto g = static_cast<unsigned char>(fminf(fmaxf(color.y * 255.0f, 0.0f), 255.0f));
         const auto b = static_cast<unsigned char>(fminf(fmaxf(color.z * 255.0f, 0.0f), 255.0f));

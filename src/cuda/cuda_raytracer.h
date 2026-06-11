@@ -83,13 +83,42 @@ namespace CudaRaytracer
             return *this;
         }
 
+        HD Vec3 operator/(
+            const Vec3 &vec3
+        ) const
+        {
+            return Vec3(
+                x / vec3.x,
+                y / vec3.y,
+                z / vec3.z
+            );
+        }
+
+        HD Vec3 operator/(
+            const float scalar
+        ) const
+        {
+            return Vec3(
+                x / scalar,
+                y / scalar,
+                z / scalar
+            );
+        }
+
         HD float Length() const;
 
         HD Vec3 Normalized() const;
 
         HD Vec3 Cross(
-            Vec3 v
+            const Vec3 &v
         ) const;
+
+        HD Vec3 Mul(
+            const Vec3 &v
+        ) const
+        {
+            return {x * v.x, y * v.y, z * v.z};
+        }
     };
 
     enum class RayType
@@ -153,15 +182,13 @@ namespace CudaRaytracer
             const Vec3 &dir
         ) const
         {
-            if (IsValid()) {
-                if (IsHDR()) {
-                    return GetHDRColor(dir);
-                }
+            if (!IsValid()) return DEFAULT_COLOR;
 
-                return GetLDRColor(dir);
+            if (IsHDR()) {
+                return GetHDRColor(dir);
             }
 
-            return DEFAULT_COLOR;
+            return GetLDRColor(dir);
         }
 
         HD Vec3 GetLDRColor(
