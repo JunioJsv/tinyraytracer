@@ -2,20 +2,12 @@
 
 #include <external/glfw/deps/glad/gl.h>
 #include <cuda_gl_interop.h>
+#include <curand_kernel.h>
 #include <device_launch_parameters.h>
 #include <iostream>
 
 #include "../camera_state.h"
-
-#define CUDA_CHECK(call)                                                                                               \
-    {                                                                                                                  \
-        const cudaError_t error = call;                                                                                \
-        if (error != cudaSuccess) {                                                                                    \
-            std::cerr << "CUDA Error: " << cudaGetErrorString(error) << " at " << __FILE__ << ":" << __LINE__          \
-                      << std::endl;                                                                                    \
-            exit(1);                                                                                                   \
-        }                                                                                                              \
-    }
+#include "stack.cuh"
 
 namespace CudaRaytracer
 {
@@ -37,10 +29,11 @@ namespace CudaRaytracer
     constexpr int N_LIGHTS = 3;
     constexpr Vec3 CPU_LIGHTS[] = {{-20, 20, 20}, {30, 50, -25}, {30, 20, 30}};
 
-    __device__ __constant__ Sphere GPU_SPHERES[N_SPHERES];
-    __device__ __constant__ Vec3 GPU_LIGHTS[N_LIGHTS];
-    __device__ __constant__ Background GPU_BACKGROUND;
-    __device__ __constant__ CameraState GPU_CAMERA;
+    GPU __constant__ Sphere GPU_SPHERES[N_SPHERES];
+    GPU __constant__ Vec3 GPU_LIGHTS[N_LIGHTS];
+    GPU __constant__ Background GPU_BACKGROUND;
+    GPU __constant__ CameraState GPU_CAMERA;
+    GPU uint32_t gpu_seed{0};
 
     float Vec3::Length() const
     {
@@ -162,6 +155,33 @@ namespace CudaRaytracer
         return {false, 0};
     }
 
+    GPU Vec3 RandomHemisphereDir(
+        const Vec3 &N,
+        RNG &rng
+    )
+    {
+        const float u = rng.RandomFloat();
+        const float v = rng.RandomFloat();
+
+        const float phi = 2.0f * PI * u;
+
+        const float cosTheta = v;
+        const float sinTheta =
+                sqrtf(1.0f - cosTheta * cosTheta);
+
+        Vec3 dir{
+            cosf(phi) * sinTheta,
+            cosTheta,
+            sinf(phi) * sinTheta
+        };
+
+        if (dir * N < 0.0f) {
+            dir = -dir;
+        }
+
+        return dir.Normalized();
+    }
+
     void Initialize()
     {
         CUDA_CHECK(cudaMemcpyToSymbol(GPU_SPHERES, CPU_SPHERES, N_SPHERES * sizeof(Sphere)));
@@ -229,7 +249,7 @@ namespace CudaRaytracer
         Material material;
     };
 
-    __device__ SceneIntersection SceneIntersect(
+    GPU SceneIntersection SceneIntersect(
         const Vec3 &orig,
         const Vec3 &dir
     )
@@ -271,95 +291,159 @@ namespace CudaRaytracer
         return {nearestDist < 1000.f, pt, N, material};
     }
 
-    __device__ Vec3 CastRay(
+    GPU bool ReflectionRay(
+        const RayState &current,
+        const SceneIntersection &intersection,
+        RayState &out
+    )
+    {
+        constexpr float offset = 1e-3f;
+        const auto &[hit, point, N, material] = intersection;
+
+        if (material.albedo[2] < 0.01f) return false;
+
+        const Vec3 reflectDir = Reflect(current.dir, N).Normalized();
+        const Vec3 reflectOrig = point + N * offset;
+        const Vec3 throughput = current.throughput * material.albedo[2];
+
+        const unsigned int depth = current.depth + 1;
+        out = RayState{
+            reflectOrig, reflectDir, depth, throughput,
+            RayType::REFLECTION, RNG{current.rng.state ^ depth}
+        };
+
+        return true;
+    }
+
+    GPU bool RefractionRay(
+        const RayState &current,
+        const SceneIntersection &intersection,
+        RayState &out
+    )
+    {
+        constexpr float offset = 1e-3f;
+        const auto &[hit, point, N, material] = intersection;
+
+        if (material.albedo[3] < 0.01f) return false;
+
+        Vec3 refractDir = Refract(current.dir, N, material.refractiveIdx, 1.0f);
+
+        if (refractDir.Length() < 0.1f) return false;
+
+        refractDir = refractDir.Normalized();
+
+        const float dotProduct = current.dir * N;
+        Vec3 refractOrig{};
+        if (dotProduct < 0) {
+            refractOrig = point - N * offset;
+        } else {
+            refractOrig = point + N * offset;
+        }
+
+        const Vec3 throughput = current.throughput * material.albedo[3];
+
+        const unsigned int depth = current.depth + 1;
+        out = RayState{
+            refractOrig, refractDir, depth, throughput,
+            RayType::REFRACTION, RNG{current.rng.state ^ depth}
+        };
+
+        return true;
+    }
+
+    GPU bool DiffuseRay(
+        RayState &current,
+        const SceneIntersection &intersection,
+        RayState &out
+    )
+    {
+        constexpr float offset = 1e-3f;
+        const auto &[hit, point, N, material] = intersection;
+
+        if (material.albedo[0] < 0.01f) return false;
+
+        const Vec3 diffuseDir = RandomHemisphereDir(N, current.rng);
+        const Vec3 diffuseOrig = point + N * offset;
+        const Vec3 throughput = current.throughput.Mul(material.diffuseColor) * material.albedo[0];
+
+        const unsigned int depth = current.depth + 1;
+        out = RayState{
+            diffuseOrig, diffuseDir, depth, throughput,
+            RayType::DIFFUSE, RNG{current.rng.state ^ depth}
+        };
+
+        return true;
+    }
+
+    GPU Vec3 ComputeLights(
+        const RayState &current,
+        const SceneIntersection &intersection
+    )
+    {
+        const auto &[hit, point, N, material] = intersection;
+        float diffuseLightIntensity = 0, specularLightIntensity = 0;
+
+        for (int i = 0; i < N_LIGHTS; ++i) {
+            const Vec3 &light = GPU_LIGHTS[i];
+            const Vec3 lightDir = (light - point).Normalized();
+
+            auto [hitShadow, shadowPt, trashnrm, trashmat] = SceneIntersect(point, lightDir);
+            if (hitShadow && (shadowPt - point).Length() < (light - point).Length())
+                continue;
+
+            diffuseLightIntensity += fmaxf(0.f, lightDir * N);
+            specularLightIntensity +=
+                    powf(fmaxf(0.f, -Reflect(-lightDir, N) * current.dir), material.specularExponent);
+        }
+
+        return material.diffuseColor * diffuseLightIntensity * material.albedo[0] +
+               Vec3{1., 1., 1.} * specularLightIntensity * material.albedo[1];
+    }
+
+    GPU Vec3 CastRay(
         const Vec3 &orig,
         const Vec3 &dir,
         const int maxDepth
     )
     {
-        constexpr int maxStackSize = 64;
-        RayState stack[maxStackSize]{};
-        int stackIdx = 0;
+        Stack<RayState, 10> stack;
+        stack.Push(RayState{orig, dir, 0, Vec3{1.f, 1.f, 1.f}, RayType::PRIMARY, RNG{gpu_seed}});
 
-        Vec3 finalColor = {0, 0, 0};
-
-        stack[stackIdx++] = RayState{orig, dir, 0, 1.0f, RayType::PRIMARY};
-
-        while (stackIdx > 0) {
-            RayState current = stack[--stackIdx];
-
+        Vec3 color{};
+        RayState current{};
+        RayState next{};
+        while (stack.Pop(current)) {
             if (current.depth > maxDepth) {
                 continue;
             }
 
-            auto [hit, point, N, material] = SceneIntersect(current.orig, current.dir);
+            const SceneIntersection intersection = SceneIntersect(current.orig, current.dir);
 
-            if (!hit) {
+            if (!intersection.hit) {
                 const Vec3 ambient = GPU_BACKGROUND.GetColor(current.dir);
-                finalColor = finalColor + ambient * current.weight;
+                color += ambient.Mul(current.throughput);
                 continue;
             }
 
-            float diffuseLightIntensity = 0, specularLightIntensity = 0;
+            color += ComputeLights(current, intersection).Mul(current.throughput);
 
-            for (int i = 0; i < N_LIGHTS; ++i) {
-                const Vec3 &light = GPU_LIGHTS[i];
-                Vec3 lightDir = (light - point).Normalized();
-
-                auto [hit_shadow, shadow_pt, trashnrm, trashmat] = SceneIntersect(point, lightDir);
-                if (hit_shadow && (shadow_pt - point).Length() < (light - point).Length())
-                    continue;
-
-                diffuseLightIntensity += fmaxf(0.f, lightDir * N);
-                specularLightIntensity +=
-                        powf(fmaxf(0.f, -Reflect(-lightDir, N) * current.dir), material.specularExponent);
+            if (DiffuseRay(current, intersection, next)) {
+                stack.Push(static_cast<RayState &&>(next));
             }
 
-            Vec3 localColor = material.diffuseColor * diffuseLightIntensity * material.albedo[0] +
-                              Vec3{1., 1., 1.} * specularLightIntensity * material.albedo[1];
+            if (RefractionRay(current, intersection, next)) {
+                stack.Push(static_cast<RayState &&>(next));
+            }
 
-            finalColor = finalColor + localColor * current.weight;
-
-            if (current.depth < maxDepth && stackIdx < (maxStackSize - 2)) {
-                constexpr float offset = 1e-3f;
-                if (material.albedo[2] > 0.01f) {
-                    const Vec3 reflectDir = Reflect(current.dir, N).Normalized();
-                    const Vec3 reflectOrig = point + N * offset;
-                    const float reflectWeight = current.weight * material.albedo[2];
-
-                    stack[stackIdx++] =
-                            RayState{reflectOrig, reflectDir, current.depth + 1, reflectWeight, RayType::REFLECTION};
-                }
-
-                if (material.albedo[3] > 0.01f) {
-                    Vec3 refractDir = Refract(current.dir, N, material.refractiveIdx, 1.0f);
-
-                    if (refractDir.Length() > 0.1f) {
-                        refractDir = refractDir.Normalized();
-
-                        const float dotProduct = current.dir * N;
-                        Vec3 refractOrig{};
-                        if (dotProduct < 0) {
-                            refractOrig = point - N * offset;
-                        } else {
-                            refractOrig = point + N * offset;
-                        }
-
-                        const float refractWeight = current.weight * material.albedo[3];
-
-                        stack[stackIdx++] = RayState{
-                            refractOrig, refractDir, current.depth + 1, refractWeight,
-                            RayType::REFRACTION
-                        };
-                    }
-                }
+            if (ReflectionRay(current, intersection, next)) {
+                stack.Push(static_cast<RayState &&>(next));
             }
         }
 
-        return finalColor;
+        return color;
     }
 
-    __device__ Vec3 GetCastRayKernalDir(
+    GPU Vec3 CastRayDir(
         const unsigned int x,
         const unsigned int y,
         const int width,
@@ -376,7 +460,7 @@ namespace CudaRaytracer
                 camera.up * dirY).Normalized();
     }
 
-    __device__ Vec3 ToneMap(
+    GPU Vec3 ToneMap(
         const Vec3 &color,
         const float exposure = 1.0f
     )
@@ -388,7 +472,7 @@ namespace CudaRaytracer
         );
     }
 
-    __device__ Vec3 GammaCorrect(
+    GPU Vec3 GammaCorrect(
         const Vec3 &color,
         const float gamma = 1.f
     )
@@ -401,7 +485,7 @@ namespace CudaRaytracer
         );
     }
 
-    __device__ uchar4
+    GPU uchar4
     CastRay(
         const unsigned int x,
         const unsigned int y,
@@ -410,7 +494,8 @@ namespace CudaRaytracer
         const CameraState &camera
     )
     {
-        const Vec3 dir = GetCastRayKernalDir(x, y, width, height, camera);
+        const Vec3 dir = CastRayDir(x, y, width, height, camera);
+        gpu_seed += x + y * width + 1;
         Vec3 color = CastRay(camera.position, dir, 4);
         if (GPU_BACKGROUND.IsHDR()) {
             color = GammaCorrect(ToneMap(color));
@@ -523,4 +608,4 @@ namespace CudaRaytracer
         CUDA_CHECK(cudaDestroySurfaceObject(surface));
         CUDA_CHECK(cudaGraphicsUnmapResources(1, &texture));
     }
-} // namespace CudaRaytracer
+}

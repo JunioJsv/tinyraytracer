@@ -1,11 +1,7 @@
 #ifndef CUDA_RAYTRACER_H
 #define CUDA_RAYTRACER_H
 
-#ifndef __CUDACC__
-#define __host__
-#define __device__
-#endif
-#define HD __host__ __device__
+#include "cuda_defs.cuh"
 
 struct CameraState;
 struct cudaGraphicsResource;
@@ -16,54 +12,54 @@ namespace CudaRaytracer
     {
         float x, y, z;
 
-        HD float &operator[](
+        ANY float &operator[](
             const int i
         )
         {
             return i == 0 ? x : (1 == i ? y : z);
         }
 
-        HD const float &operator[](
+        ANY const float &operator[](
             const int i
         ) const
         {
             return i == 0 ? x : (1 == i ? y : z);
         }
 
-        HD Vec3 operator*(
+        ANY Vec3 operator*(
             const float v
         ) const
         {
             return {x * v, y * v, z * v};
         }
 
-        HD float operator*(
+        ANY float operator*(
             const Vec3 &v
         ) const
         {
             return x * v.x + y * v.y + z * v.z;
         }
 
-        HD Vec3 operator+(
+        ANY Vec3 operator+(
             const Vec3 &v
         ) const
         {
             return {x + v.x, y + v.y, z + v.z};
         }
 
-        HD Vec3 operator-(
+        ANY Vec3 operator-(
             const Vec3 &v
         ) const
         {
             return {x - v.x, y - v.y, z - v.z};
         }
 
-        HD Vec3 operator-() const
+        ANY Vec3 operator-() const
         {
             return {-x, -y, -z};
         }
 
-        HD Vec3 &operator+=(
+        ANY Vec3 &operator+=(
             const Vec3 &vec3
         )
         {
@@ -73,7 +69,7 @@ namespace CudaRaytracer
             return *this;
         }
 
-        HD Vec3 &operator-=(
+        ANY Vec3 &operator-=(
             const Vec3 &vec3
         )
         {
@@ -83,7 +79,7 @@ namespace CudaRaytracer
             return *this;
         }
 
-        HD Vec3 operator/(
+        ANY Vec3 operator/(
             const Vec3 &vec3
         ) const
         {
@@ -94,7 +90,7 @@ namespace CudaRaytracer
             );
         }
 
-        HD Vec3 operator/(
+        ANY Vec3 operator/(
             const float scalar
         ) const
         {
@@ -105,15 +101,15 @@ namespace CudaRaytracer
             );
         }
 
-        HD float Length() const;
+        ANY float Length() const;
 
-        HD Vec3 Normalized() const;
+        ANY Vec3 Normalized() const;
 
-        HD Vec3 Cross(
+        ANY Vec3 Cross(
             const Vec3 &v
         ) const;
 
-        HD Vec3 Mul(
+        ANY Vec3 Mul(
             const Vec3 &v
         ) const
         {
@@ -121,20 +117,38 @@ namespace CudaRaytracer
         }
     };
 
+    struct RNG
+    {
+        uint32_t state;
+
+        GPU uint32_t NextRandom()
+        {
+            state = state * 1664525u + 1013904223u;
+            return state;
+        }
+
+        GPU float RandomFloat()
+        {
+            return static_cast<float>(NextRandom() & 0x00FFFFFF) * (1.0f / 16777216.0f);
+        }
+    };
+
     enum class RayType
     {
-        PRIMARY = 0,
-        REFLECTION = 1,
-        REFRACTION = 2
+        PRIMARY,
+        REFLECTION,
+        REFRACTION,
+        DIFFUSE,
     };
 
     struct RayState
     {
         Vec3 orig;
         Vec3 dir;
-        int depth;
-        float weight;
+        unsigned int depth;
+        Vec3 throughput;
         RayType rayType;
+        RNG rng;
     };
 
     struct Background
@@ -147,7 +161,7 @@ namespace CudaRaytracer
             RGB32F
         };
 
-        HD unsigned int GetChannelSizeInBytes() const
+        ANY unsigned int GetChannelSizeInBytes() const
         {
             switch (format) {
                 case Format::RGB8:
@@ -159,26 +173,26 @@ namespace CudaRaytracer
             }
         }
 
-        HD unsigned int GetDataSizeInBytes() const
+        ANY unsigned int GetDataSizeInBytes() const
         {
             return width * height * channels * GetChannelSizeInBytes();
         }
 
-        HD bool IsHDR() const
+        ANY bool IsHDR() const
         {
             return format == Format::RGB32F;
         }
 
-        HD bool IsValid() const
+        ANY bool IsValid() const
         {
             return data && width > 0 && height > 0 && channels > 0;
         }
 
-        HD unsigned int GetIndex(
+        ANY unsigned int GetIndex(
             const Vec3 &dir
         ) const;
 
-        HD Vec3 GetColor(
+        ANY Vec3 GetColor(
             const Vec3 &dir
         ) const
         {
@@ -191,11 +205,11 @@ namespace CudaRaytracer
             return GetLDRColor(dir);
         }
 
-        HD Vec3 GetLDRColor(
+        ANY Vec3 GetLDRColor(
             const Vec3 &dir
         ) const;
 
-        HD Vec3 GetHDRColor(
+        ANY Vec3 GetHDRColor(
             const Vec3 &dir
         ) const;
 
@@ -221,12 +235,12 @@ namespace CudaRaytracer
         Material material;
     };
 
-    HD Vec3 Reflect(
+    ANY Vec3 Reflect(
         const Vec3 &I,
         const Vec3 &N
     );
 
-    HD Vec3 Refract(
+    ANY Vec3 Refract(
         const Vec3 &I,
         const Vec3 &N,
         float etaT,
@@ -239,36 +253,36 @@ namespace CudaRaytracer
         float distance;
     };
 
-    HD RayIntersection RaySphereIntersect(
+    ANY RayIntersection RaySphereIntersect(
         const Vec3 &orig,
         const Vec3 &dir,
         const Sphere &s
     );
 
-    __host__ void Initialize();
+    CPU void Initialize();
 
-    __host__ void Destroy();
+    CPU void Destroy();
 
-    __host__ void SetBackground(
+    CPU void SetBackground(
         const Background &background
     );
 
-    __host__ cudaGraphicsResource *SetupCudaTexture(
+    CPU cudaGraphicsResource *SetupCudaTexture(
         unsigned int glTextureId
     );
 
-    __host__ void DestroyCudaTexture(
+    CPU void DestroyCudaTexture(
         cudaGraphicsResource *texture
     );
 
-    __host__ void Render(
+    CPU void Render(
         uint32_t *output,
         int width,
         int height,
         const CameraState &camera
     );
 
-    __host__ void Render(
+    CPU void Render(
         cudaGraphicsResource *texture,
         int width,
         int height,

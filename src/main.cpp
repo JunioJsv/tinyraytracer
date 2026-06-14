@@ -38,7 +38,7 @@ namespace
         input.mouseWheelDelta = GetMouseWheelMove();
         camera.Update(input, deltaTime);
     }
-} // namespace
+}
 
 int main()
 {
