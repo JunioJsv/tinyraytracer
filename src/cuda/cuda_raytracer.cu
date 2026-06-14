@@ -27,10 +27,12 @@ namespace CudaRaytracer
     };
 
     constexpr int N_LIGHTS = 3;
-    constexpr Vec3 CPU_LIGHTS[] = {{-20, 20, 20}, {30, 50, -25}, {30, 20, 30}};
+    constexpr SphereLight CPU_LIGHTS[] = {
+        {-20, 20, 20, 15.f, 1000.f}, {30, 50, -25, 10.f, 5000.f}, {30, 20, 30, 10.f, 5000.f}
+    };
 
     GPU __constant__ Sphere GPU_SPHERES[N_SPHERES];
-    GPU __constant__ Vec3 GPU_LIGHTS[N_LIGHTS];
+    GPU __constant__ SphereLight GPU_LIGHTS[N_LIGHTS];
     GPU __constant__ Background GPU_BACKGROUND;
     GPU __constant__ CameraState GPU_CAMERA;
     GPU uint32_t gpu_seed{0};
@@ -121,18 +123,36 @@ namespace CudaRaytracer
     }
 
     Vec3 Refract(
-        const Vec3 &I,
-        const Vec3 &N,
-        const float etaT,
-        const float etaI
+        const Vec3 I,
+        Vec3 N,
+        float etaT,
+        float etaI
     )
     {
-        const float cosi = -fmaxf(-1.f, fminf(1.f, I * N));
-        if (cosi < 0)
-            return Refract(I, -N, etaI, etaT);
+        float cosi = -fmaxf(
+            -1.f,
+            fminf(1.f, I * N)
+        );
+
+        if (cosi < 0.f) {
+            cosi = -cosi;
+            N = -N;
+
+            const float tmp = etaI;
+            etaI = etaT;
+            etaT = tmp;
+        }
+
         const float eta = etaI / etaT;
-        const float k = 1 - eta * eta * (1 - cosi * cosi);
-        return k < 0 ? Vec3{1, 0, 0} : I * eta + N * (eta * cosi - sqrtf(k));
+
+        const float k = 1.f - eta * eta *
+                        (1.f - cosi * cosi);
+
+        if (k < 0.f) {
+            return Vec3{};
+        }
+
+        return I * eta + N * (eta * cosi - sqrtf(k));
     }
 
     RayIntersection RaySphereIntersect(
@@ -155,8 +175,7 @@ namespace CudaRaytracer
         return {false, 0};
     }
 
-    GPU Vec3 RandomHemisphereDir(
-        const Vec3 &N,
+    GPU Vec3 RandomSphereDir(
         RNG &rng
     )
     {
@@ -166,26 +185,33 @@ namespace CudaRaytracer
         const float phi = 2.0f * PI * u;
 
         const float cosTheta = v;
-        const float sinTheta =
-                sqrtf(1.0f - cosTheta * cosTheta);
+        const float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
 
-        Vec3 dir{
+        return {
             cosf(phi) * sinTheta,
             cosTheta,
             sinf(phi) * sinTheta
         };
+    }
+
+    GPU Vec3 RandomHemisphereDir(
+        const Vec3 &N,
+        RNG &rng
+    )
+    {
+        Vec3 dir = RandomSphereDir(rng);
 
         if (dir * N < 0.0f) {
             dir = -dir;
         }
 
-        return dir.Normalized();
+        return dir;
     }
 
     void Initialize()
     {
         CUDA_CHECK(cudaMemcpyToSymbol(GPU_SPHERES, CPU_SPHERES, N_SPHERES * sizeof(Sphere)));
-        CUDA_CHECK(cudaMemcpyToSymbol(GPU_LIGHTS, CPU_LIGHTS, N_LIGHTS * sizeof(Vec3)));
+        CUDA_CHECK(cudaMemcpyToSymbol(GPU_LIGHTS, CPU_LIGHTS, N_LIGHTS * sizeof(SphereLight)));
         CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 4096));
     }
 
@@ -375,25 +401,63 @@ namespace CudaRaytracer
         return true;
     }
 
+    GPU float ComputeAO(
+        const SceneIntersection &intersection,
+        RNG &rng
+    )
+    {
+        constexpr int samples = 8;
+        constexpr float offset = 1e-3f;
+
+        const auto &point = intersection.pt;
+        const auto &N = intersection.N;
+
+        int visible = 0;
+
+        for (int i = 0; i < samples; ++i) {
+            Vec3 dir = RandomHemisphereDir(N, rng);
+
+            const bool hit = SceneIntersect(point + N * offset, dir).hit;
+
+            if (!hit) {
+                visible++;
+            }
+        }
+
+        return static_cast<float>(visible) / static_cast<float>(samples);
+    }
+
     GPU Vec3 ComputeLights(
-        const RayState &current,
+        RayState &current,
         const SceneIntersection &intersection
     )
     {
+        constexpr int samples = 8;
+        constexpr float offset = 1e-3f;
         const auto &[hit, point, N, material] = intersection;
         float diffuseLightIntensity = 0, specularLightIntensity = 0;
 
         for (int i = 0; i < N_LIGHTS; ++i) {
-            const Vec3 &light = GPU_LIGHTS[i];
-            const Vec3 lightDir = (light - point).Normalized();
+            const SphereLight &light = GPU_LIGHTS[i];
+            for (int sample = 0; sample < samples; ++sample) {
+                const Vec3 samplePoint = light.origin + RandomSphereDir(current.rng) * light.radius;
+                Vec3 toLight = samplePoint - point;
 
-            auto [hitShadow, shadowPt, trashnrm, trashmat] = SceneIntersect(point, lightDir);
-            if (hitShadow && (shadowPt - point).Length() < (light - point).Length())
-                continue;
+                const float distance = toLight.Length();
 
-            diffuseLightIntensity += fmaxf(0.f, lightDir * N);
-            specularLightIntensity +=
-                    powf(fmaxf(0.f, -Reflect(-lightDir, N) * current.dir), material.specularExponent);
+                Vec3 lightDir = toLight / distance;
+
+                auto [hitShadow, shadowPt, trashnrm, trashmat] = SceneIntersect(point + N * offset, lightDir);
+                if (hitShadow && (shadowPt - point).Length() < distance)
+                    continue;
+
+                const float attenuation = light.intensity / (distance * distance);
+
+                diffuseLightIntensity += fmaxf(0.f, lightDir * N) * attenuation / samples;
+                specularLightIntensity +=
+                        powf(fmaxf(0.f, -Reflect(-lightDir, N) * current.dir), material.specularExponent)
+                        * attenuation / samples;
+            }
         }
 
         return material.diffuseColor * diffuseLightIntensity * material.albedo[0] +
@@ -425,7 +489,8 @@ namespace CudaRaytracer
                 continue;
             }
 
-            color += ComputeLights(current, intersection).Mul(current.throughput);
+            color += ComputeLights(current, intersection).Mul(current.throughput) *
+                    ComputeAO(intersection, current.rng);
 
             if (DiffuseRay(current, intersection, next)) {
                 stack.Push(static_cast<RayState &&>(next));

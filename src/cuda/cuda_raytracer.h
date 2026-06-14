@@ -228,6 +228,13 @@ namespace CudaRaytracer
         float specularExponent;
     };
 
+    struct SphereLight
+    {
+        Vec3 origin;
+        float radius;
+        float intensity;
+    };
+
     struct Sphere
     {
         Vec3 center;
@@ -241,8 +248,8 @@ namespace CudaRaytracer
     );
 
     ANY Vec3 Refract(
-        const Vec3 &I,
-        const Vec3 &N,
+        Vec3 I,
+        Vec3 N,
         float etaT,
         float etaI
     );
