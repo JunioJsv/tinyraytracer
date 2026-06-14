@@ -19,9 +19,40 @@ void BaseRender::SetBackground(
         3 /*channels*/
     });
     UnloadImage(background);
+    ResetAccumulator();
+}
+
+void BaseRender::ResetAccumulator()
+{
+    CudaRaytracer::ResetAccumulator();
+    sample = 0;
+}
+
+void BaseRender::BeforeDraw()
+{
+    const CameraState &cameraState = camera.GetState();
+    if (lastCameraState != cameraState) {
+        ResetAccumulator();
+    }
+
+    lastCameraState = cameraState;
+}
+
+void BaseRender::AfterDraw()
+{
+    sample++;
 }
 
 void BaseRender::DrawGUI()
 {
     DrawFPS(10, 10);
+    DrawText(TextFormat("SAMPLES: %d", sample), 10, 38, 20, WHITE);
+}
+
+void BaseRender::Resize(
+    const int width,
+    const int height
+)
+{
+    CudaRaytracer::ResizeAccumulator(width, height);
 }

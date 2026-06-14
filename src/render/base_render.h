@@ -4,14 +4,22 @@
 #include <raylib.h>
 #include <string>
 
+#include "../camera_controller.h"
 #include "../cuda/cuda_raytracer.h"
 
 class BaseRender
 {
 public:
-    BaseRender()
+    BaseRender(
+        const int width,
+        const int height,
+        const CameraController &camera
+    ) : camera(camera)
+      , lastCameraState(camera.GetState())
+      , sample(0)
     {
         CudaRaytracer::Initialize();
+        CudaRaytracer::SetupAccumulator(width, height);
     }
 
     virtual ~BaseRender()
@@ -19,9 +27,15 @@ public:
         CudaRaytracer::Destroy();
     }
 
-    static void SetBackground(
+    void SetBackground(
         const std::string &fileName
     );
+
+    void ResetAccumulator();
+
+    void BeforeDraw();
+
+    void AfterDraw();
 
     virtual void Draw() = 0;
 
@@ -30,7 +44,7 @@ public:
     virtual void Resize(
         int width,
         int height
-    ) = 0;
+    );
 
     static Image SetupImage(
         void *data,
@@ -40,6 +54,11 @@ public:
     {
         return {data, width, height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
     }
+
+protected:
+    const CameraController &camera;
+    CameraState lastCameraState;
+    size_t sample;
 };
 
 #endif

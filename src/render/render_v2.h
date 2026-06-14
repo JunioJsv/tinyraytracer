@@ -26,7 +26,6 @@ public:
     ) override;
 
 private:
-    const CameraController &camera;
     Texture2D texture;
     cudaGraphicsResource *cudaTexture;
 };

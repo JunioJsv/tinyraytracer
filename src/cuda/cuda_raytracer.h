@@ -10,6 +10,21 @@ namespace CudaRaytracer
 {
     struct alignas(16) Vec3
     {
+        friend bool operator==(
+            const Vec3 &lhs,
+            const Vec3 &rhs
+        )
+        {
+            return lhs.x == rhs.x
+                   && lhs.y == rhs.y
+                   && lhs.z == rhs.z;
+        }
+
+        friend bool operator!=(
+            const Vec3 &lhs,
+            const Vec3 &rhs
+        ) { return !(lhs == rhs); }
+
         float x, y, z;
 
         ANY float &operator[](
@@ -270,6 +285,18 @@ namespace CudaRaytracer
 
     CPU void Destroy();
 
+    CPU void SetupAccumulator(
+        int width,
+        int height
+    );
+
+    CPU void ResetAccumulator();
+
+    CPU void ResizeAccumulator(
+        int width,
+        int height
+    );
+
     CPU void SetBackground(
         const Background &background
     );
@@ -286,15 +313,17 @@ namespace CudaRaytracer
         uint32_t *output,
         int width,
         int height,
-        const CameraState &camera
+        const CameraState &camera,
+        size_t sample
     );
 
     CPU void Render(
         cudaGraphicsResource *texture,
         int width,
         int height,
-        const CameraState &camera
+        const CameraState &camera,
+        size_t sample
     );
-} // namespace CudaRaytracer
+}
 
 #endif // CUDA_RAYTRACER_H

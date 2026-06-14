@@ -28,7 +28,6 @@ public:
 
 private:
     std::vector<uint32_t> pixels;
-    const CameraController &camera;
     Image image;
     Texture2D texture;
 };

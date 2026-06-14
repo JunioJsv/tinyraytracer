@@ -7,6 +7,25 @@
 
 struct CameraState
 {
+    friend bool operator==(
+        const CameraState &lhs,
+        const CameraState &rhs
+    )
+    {
+        return lhs.position == rhs.position
+               && lhs.forward == rhs.forward
+               && lhs.right == rhs.right
+               && lhs.up == rhs.up
+               && lhs.pitch == rhs.pitch
+               && lhs.yaw == rhs.yaw
+               && lhs.fov == rhs.fov;
+    }
+
+    friend bool operator!=(
+        const CameraState &lhs,
+        const CameraState &rhs
+    ) { return !(lhs == rhs); }
+
     [[nodiscard]] std::string ToString() const;
 
     CudaRaytracer::Vec3 position;
