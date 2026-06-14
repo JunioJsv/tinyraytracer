@@ -16,7 +16,8 @@ public:
         const CameraController &camera
     ) : camera(camera)
       , lastCameraState(camera.GetState())
-      , sample(0)
+      , samples(0)
+      , frames(0)
     {
         CudaRaytracer::Initialize();
         CudaRaytracer::SetupAccumulator(width, height);
@@ -58,7 +59,8 @@ public:
 protected:
     const CameraController &camera;
     CameraState lastCameraState;
-    size_t sample;
+    size_t samples;
+    size_t frames;
 };
 
 #endif

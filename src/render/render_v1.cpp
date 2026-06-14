@@ -18,8 +18,8 @@ void RenderV1::Draw()
 {
     BeforeDraw();
     BeginDrawing();
-    CudaRaytracer::Render(static_cast<uint32_t *>(image.data),
-                          image.width, image.height, camera.GetState(), sample);
+    CudaRaytracer::Render(static_cast<uint32_t *>(image.data), camera.GetState(),
+                          {image.width, image.height, samples, frames});
     UpdateTexture(texture, image.data);
     DrawTexture(texture, 0, 0, WHITE);
     DrawGUI();

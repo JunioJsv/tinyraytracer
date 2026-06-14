@@ -15,20 +15,20 @@ namespace CudaRaytracer
 
     constexpr Material IVORY = {1.0, {0.9, 0.5, 0.1, 0.0}, {0.4, 0.4, 0.3}, 50.};
     constexpr Material GLASS = {1.5, {0.0, 0.9, 0.1, 0.8}, {0.6, 0.7, 0.8}, 125.};
-    constexpr Material RED_RUBBER = {1.0, {1.4, 0.3, 0.0, 0.0}, {0.3, 0.1, 0.1}, 10.};
+    constexpr Material RED_NEON = {1.0, {1.4, 0.3, 0.0, 0.0}, {5., 0.1, 0.1}, 10.};
     constexpr Material MIRROR = {1.0, {0.0, 16.0, 0.8, 0.0}, {1.0, 1.0, 1.0}, 1425.};
 
     constexpr int N_SPHERES = 4;
     constexpr Sphere CPU_SPHERES[] = {
         {{-3, 0, -16}, 2, IVORY},
         {{-1.0, -1.5, -12}, 2, GLASS},
-        {{1.5, -0.5, -18}, 3, RED_RUBBER},
+        {{1.5, -0.5, -18}, 3, RED_NEON},
         {{7, 5, -18}, 4, MIRROR}
     };
 
     constexpr int N_LIGHTS = 3;
     constexpr SphereLight CPU_LIGHTS[] = {
-        {-20, 20, 20, 15.f, 1000.f}, {30, 50, -25, 10.f, 15000.f}, {30, 20, 30, 10.f, 5000.f}
+        {-20, 20, 20, 2.5f, 1500.f}, {30, 50, -25, 8.f, 2000.f}, {30, 20, 30, 5.f, 5000.f}
     };
 
     GPU __constant__ Sphere GPU_SPHERES[N_SPHERES];
@@ -601,19 +601,17 @@ namespace CudaRaytracer
     CastRay(
         const unsigned int x,
         const unsigned int y,
-        const int width,
-        const int height,
         const CameraState &camera,
-        const size_t sample
+        const RenderInfo &info
     )
     {
-        const unsigned int pixelIdx = y * width + x;
-        const Vec3 dir = CastRayDir(x, y, width, height, camera);
+        const unsigned int pixelIdx = y * info.width + x;
+        const Vec3 dir = CastRayDir(x, y, info.width, info.height, camera);
 
-        const uint32_t seed = Hash(pixelIdx + sample * 1000003u);
+        const uint32_t seed = Hash(pixelIdx + info.frames * 1000003u);
         GPU_ACCUMULATOR[pixelIdx] += CastRay(camera.position, dir, 4, seed);
 
-        Vec3 color = GPU_ACCUMULATOR[pixelIdx] / static_cast<float>(sample + 1);
+        Vec3 color = GPU_ACCUMULATOR[pixelIdx] / static_cast<float>(info.samples + 1);
         if (GPU_BACKGROUND.IsHDR()) {
             color = GammaCorrect(ToneMap(color));
         }
@@ -626,31 +624,27 @@ namespace CudaRaytracer
 
     __global__ void CastRayKernel(
         uint32_t *pixels,
-        const int width,
-        const int height,
-        const size_t sample
+        const RenderInfo info
     )
     {
         const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-        const unsigned int pixelIdx = y * width + x;
+        const unsigned int pixelIdx = y * info.width + x;
 
-        const auto [r, g, b, a] = CastRay(x, y, width, height, GPU_CAMERA, sample);
+        const auto [r, g, b, a] = CastRay(x, y, GPU_CAMERA, info);
         const uint32_t color = a << 24 | b << 16 | g << 8 | r;
         pixels[pixelIdx] = color;
     }
 
     __global__ void CastRayKernel(
         const cudaSurfaceObject_t surface,
-        const int width,
-        const int height,
-        const size_t sample
+        const RenderInfo info
     )
     {
         const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
         const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-        const auto pixel = CastRay(x, y, width, height, GPU_CAMERA, sample);
+        const auto pixel = CastRay(x, y, GPU_CAMERA, info);
 
         surf2Dwrite(
             pixel,
@@ -662,25 +656,23 @@ namespace CudaRaytracer
 
     void Render(
         uint32_t *output,
-        const int width,
-        const int height,
         const CameraState &camera,
-        const size_t sample
+        const RenderInfo &info
     )
     {
         uint32_t *pixels = nullptr;
-        const size_t pixelsBytes = width * height * sizeof(uint32_t);
+        const size_t pixelsBytes = info.width * info.height * sizeof(uint32_t);
         CUDA_CHECK(cudaMalloc(&pixels, pixelsBytes));
         CUDA_CHECK(cudaMemcpyToSymbol(GPU_CAMERA, &camera, sizeof(CameraState)));
 
         constexpr dim3 block(8, 8);
 
         const dim3 grid(
-            (width + block.x - 1) / block.x,
-            (height + block.y - 1) / block.y
+            (info.width + block.x - 1) / block.x,
+            (info.height + block.y - 1) / block.y
         );
 
-        CastRayKernel<<<grid, block>>>(pixels, width, height, sample);
+        CastRayKernel<<<grid, block>>>(pixels, info);
 
         CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -691,10 +683,8 @@ namespace CudaRaytracer
 
     void Render(
         cudaGraphicsResource *texture,
-        const int width,
-        const int height,
         const CameraState &camera,
-        const size_t sample
+        const RenderInfo &info
     )
     {
         CUDA_CHECK(cudaMemcpyToSymbol(GPU_CAMERA, &camera, sizeof(CameraState)));
@@ -718,11 +708,11 @@ namespace CudaRaytracer
         constexpr dim3 block(8, 8);
 
         const dim3 grid(
-            (width + block.x - 1) / block.x,
-            (height + block.y - 1) / block.y
+            (info.width + block.x - 1) / block.x,
+            (info.height + block.y - 1) / block.y
         );
 
-        CastRayKernel<<<grid, block>>>(surface, width, height, sample);
+        CastRayKernel<<<grid, block>>>(surface, info);
 
         CUDA_CHECK(cudaDeviceSynchronize());
 

@@ -17,7 +17,7 @@ void RenderV2::Draw()
 {
     BeforeDraw();
     BeginDrawing();
-    CudaRaytracer::Render(cudaTexture, texture.width, texture.height, camera.GetState(), sample);
+    CudaRaytracer::Render(cudaTexture, camera.GetState(), {texture.width, texture.height, samples, frames});
     DrawTexture(texture, 0, 0, WHITE);
     DrawGUI();
     EndDrawing();

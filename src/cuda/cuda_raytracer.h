@@ -132,6 +132,14 @@ namespace CudaRaytracer
         }
     };
 
+    struct RenderInfo
+    {
+        int width;
+        int height;
+        size_t samples;
+        size_t frames;
+    };
+
     struct RNG
     {
         uint32_t state;
@@ -311,18 +319,14 @@ namespace CudaRaytracer
 
     CPU void Render(
         uint32_t *output,
-        int width,
-        int height,
         const CameraState &camera,
-        size_t sample
+        const RenderInfo &info
     );
 
     CPU void Render(
         cudaGraphicsResource *texture,
-        int width,
-        int height,
         const CameraState &camera,
-        size_t sample
+        const RenderInfo &info
     );
 }
 

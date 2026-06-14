@@ -25,7 +25,7 @@ void BaseRender::SetBackground(
 void BaseRender::ResetAccumulator()
 {
     CudaRaytracer::ResetAccumulator();
-    sample = 0;
+    samples = 0;
 }
 
 void BaseRender::BeforeDraw()
@@ -40,13 +40,14 @@ void BaseRender::BeforeDraw()
 
 void BaseRender::AfterDraw()
 {
-    sample++;
+    samples++;
+    frames++;
 }
 
 void BaseRender::DrawGUI()
 {
     DrawFPS(10, 10);
-    DrawText(TextFormat("SAMPLES: %d", sample), 10, 38, 20, WHITE);
+    DrawText(TextFormat("%d SPS", samples), 10, 38, 20, VIOLET);
 }
 
 void BaseRender::Resize(
