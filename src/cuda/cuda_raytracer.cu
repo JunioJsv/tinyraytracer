@@ -513,7 +513,7 @@ namespace CudaRaytracer
     GPU Vec3 CastRay(
         const Vec3 &orig,
         const Vec3 &dir,
-        const int maxDepth,
+        const RenderInfo &info,
         const uint32_t seed
     )
     {
@@ -524,7 +524,7 @@ namespace CudaRaytracer
         RayState current{};
         RayState next{};
         while (stack.Pop(current)) {
-            if (current.depth > maxDepth) {
+            if (current.depth > info.maxDepth) {
                 continue;
             }
 
@@ -536,18 +536,20 @@ namespace CudaRaytracer
                 continue;
             }
 
-            color += ComputeLights(current, intersection).Mul(current.throughput) *
-                    ComputeAO(intersection, current.rng);
+            if (info.enableLights) {
+                color += ComputeLights(current, intersection).Mul(current.throughput) *
+                        ComputeAO(intersection, current.rng);
+            }
 
-            if (DiffuseRay(current, intersection, next)) {
+            if (info.enableDiffuse && DiffuseRay(current, intersection, next)) {
                 stack.Push(static_cast<RayState &&>(next));
             }
 
-            if (RefractionRay(current, intersection, next)) {
+            if (info.enableRefraction && RefractionRay(current, intersection, next)) {
                 stack.Push(static_cast<RayState &&>(next));
             }
 
-            if (ReflectionRay(current, intersection, next)) {
+            if (info.enableReflection && ReflectionRay(current, intersection, next)) {
                 stack.Push(static_cast<RayState &&>(next));
             }
         }
@@ -609,9 +611,11 @@ namespace CudaRaytracer
         const Vec3 dir = CastRayDir(x, y, info.width, info.height, camera);
 
         const uint32_t seed = Hash(pixelIdx + info.frames * 1000003u);
-        GPU_ACCUMULATOR[pixelIdx] += CastRay(camera.position, dir, 4, seed);
-
-        Vec3 color = GPU_ACCUMULATOR[pixelIdx] / static_cast<float>(info.samples + 1);
+        Vec3 color = CastRay(camera.position, dir, info, seed);
+        if (info.enableAccumulator) {
+            GPU_ACCUMULATOR[pixelIdx] += color;
+            color = GPU_ACCUMULATOR[pixelIdx] / static_cast<float>(info.samples + 1);
+        }
         if (GPU_BACKGROUND.IsHDR()) {
             color = GammaCorrect(ToneMap(color));
         }

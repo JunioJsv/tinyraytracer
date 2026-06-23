@@ -138,6 +138,14 @@ namespace CudaRaytracer
         int height;
         size_t samples;
         size_t frames;
+
+        bool enableAccumulator;
+        bool enableReflection;
+        bool enableRefraction;
+        bool enableDiffuse;
+        bool enableLights;
+
+        int maxDepth;
     };
 
     struct RNG

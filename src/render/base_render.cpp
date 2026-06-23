@@ -1,5 +1,9 @@
 #include "base_render.h"
 
+#include <imgui.h>
+
+#include "../input_manager.h"
+
 void BaseRender::SetBackground(
     const std::string &fileName
 )
@@ -36,18 +40,64 @@ void BaseRender::BeforeDraw()
     }
 
     lastCameraState = cameraState;
+    BeginDrawing();
+    rlImGuiBegin();
+    ProcessInputs();
+}
+
+void BaseRender::ProcessInputs()
+{
+    InputManager::RenderInputs(*this);
+    if (!WantCaptureCursor()) {
+        InputManager::CameraInputs(camera);
+    }
 }
 
 void BaseRender::AfterDraw()
 {
-    samples++;
+    ImGui::SetNextWindowPos(
+        ImVec2(10, 10),
+        ImGuiCond_FirstUseEver
+    );
+
+    ImGui::SetNextWindowSize(
+        ImVec2(250, 235),
+        ImGuiCond_FirstUseEver
+    );
+
+    DrawGUI();
+    rlImGuiEnd();
+    EndDrawing();
+    if (renderInfo.enableAccumulator) {
+        samples++;
+    }
     frames++;
 }
 
 void BaseRender::DrawGUI()
 {
-    DrawFPS(10, 10);
-    DrawText(TextFormat("%d SPS", samples), 10, 38, 20, VIOLET);
+    bool shouldResetAccumulator = false;
+    ImGui::Begin("Render Settings");
+
+    ImGui::Text("FPS: %d", GetFPS());
+    ImGui::Text("Samples: %lld", samples);
+
+    ImGui::Separator();
+
+    shouldResetAccumulator |= ImGui::Checkbox("Enable Accumulator", &renderInfo.enableAccumulator);
+    shouldResetAccumulator |= ImGui::Checkbox("Enable Lights", &renderInfo.enableLights);
+
+    ImGui::SeparatorText("Rays");
+    shouldResetAccumulator |= ImGui::Checkbox("Enable Reflection", &renderInfo.enableReflection);
+    shouldResetAccumulator |= ImGui::Checkbox("Enable Refraction", &renderInfo.enableRefraction);
+    shouldResetAccumulator |= ImGui::Checkbox("Enable Diffuse", &renderInfo.enableDiffuse);
+    shouldResetAccumulator |= ImGui::SliderInt("Max Depth", &renderInfo.maxDepth, 0, 8);
+
+    if (shouldResetAccumulator) {
+        ResetAccumulator();
+    }
+
+    ImGui::End();
 }
 
 void BaseRender::Resize(
@@ -56,4 +106,18 @@ void BaseRender::Resize(
 )
 {
     CudaRaytracer::ResizeAccumulator(width, height);
+}
+
+bool BaseRender::WantCaptureCursor() const
+{
+    const ImGuiIO &io = ImGui::GetIO();
+
+    return io.WantCaptureMouse;
+}
+
+const CudaRaytracer::RenderInfo &BaseRender::UpdateRenderInfo()
+{
+    renderInfo.frames = frames;
+    renderInfo.samples = samples;
+    return renderInfo;
 }

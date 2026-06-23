@@ -12,8 +12,7 @@ public:
     CameraController();
 
     void Update(
-        const CameraInput &input,
-        float deltaTime
+        const CameraInput &input
     );
 
     [[nodiscard]] const CameraState &GetState() const
@@ -29,22 +28,19 @@ public:
 
     static constexpr float PITCH_LIMIT = 89.f * DEG2RAD;
     static constexpr float YAW_LIMIT = 360.f * DEG2RAD;
-    static constexpr float MOUSE_SENSITIVITY = 16.f * DEG2RAD;
+    static constexpr float MOUSE_SENSITIVITY = 24.f * DEG2RAD;
 
 private:
     void UpdateMovement(
-        const CameraInput &input,
-        float deltaTime
+        const CameraInput &input
     );
 
     void UpdateAxis(
-        const CameraInput &input,
-        float deltaTime
+        const CameraInput &input
     );
 
     void UpdateAttributes(
-        const CameraInput &input,
-        float deltaTime
+        const CameraInput &input
     );
 
     void UpdateDirections();

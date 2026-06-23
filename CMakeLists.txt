@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(tinyraytracer LANGUAGES CXX CUDA)
 
 include(GNUInstallDirs)
+include(cmake/rlImGui.cmake)
 
 enable_language(CUDA)
 
@@ -29,7 +30,7 @@ add_subdirectory(external/raylib)
 file(GLOB SOURCES src/*.cpp src/render/*.cpp src/cuda/*.cu)
 add_executable(${PROJECT_NAME} ${SOURCES})
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES native)
-target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart raylib)
+target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart raylib rlImGui)
 target_precompile_headers(${PROJECT_NAME} PRIVATE
         <iostream>
         <string>

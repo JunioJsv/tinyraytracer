@@ -5,15 +5,12 @@
 
 #include <raylib.h>
 
-#include "../camera_controller.h"
-
 class RenderV2 final : public BaseRender
 {
 public:
     RenderV2(
         int width,
-        int height,
-        const CameraController &camera
+        int height
     );
 
     ~RenderV2() override;
@@ -24,6 +21,8 @@ public:
         int width,
         int height
     ) override;
+
+    const CudaRaytracer::RenderInfo& UpdateRenderInfo() override;
 
 private:
     Texture2D texture;

@@ -2,9 +2,8 @@
 
 RenderV2::RenderV2(
     const int width,
-    const int height,
-    const CameraController &camera
-) : BaseRender(width, height, camera)
+    const int height
+) : BaseRender(width, height)
   , texture(LoadTextureFromImage(SetupImage(nullptr, width, height)))
   , cudaTexture(CudaRaytracer::SetupCudaTexture(texture.id)) {}
 
@@ -16,11 +15,8 @@ RenderV2::~RenderV2()
 void RenderV2::Draw()
 {
     BeforeDraw();
-    BeginDrawing();
-    CudaRaytracer::Render(cudaTexture, camera.GetState(), {texture.width, texture.height, samples, frames});
+    CudaRaytracer::Render(cudaTexture, camera.GetState(), UpdateRenderInfo());
     DrawTexture(texture, 0, 0, WHITE);
-    DrawGUI();
-    EndDrawing();
     AfterDraw();
 }
 
@@ -34,4 +30,12 @@ void RenderV2::Resize(
     UnloadTexture(texture);
     texture = LoadTextureFromImage(SetupImage(nullptr, width, height));
     cudaTexture = CudaRaytracer::SetupCudaTexture(texture.id);
+}
+
+const CudaRaytracer::RenderInfo &RenderV2::UpdateRenderInfo()
+{
+    BaseRender::UpdateRenderInfo();
+    renderInfo.width = texture.width;
+    renderInfo.height = texture.height;
+    return renderInfo;
 }

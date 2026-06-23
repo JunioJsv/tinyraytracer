@@ -11,21 +11,19 @@ CameraController::CameraController()
 }
 
 void CameraController::Update(
-    const CameraInput &input,
-    const float deltaTime
+    const CameraInput &input
 )
 {
-    UpdateAxis(input, deltaTime);
-    UpdateMovement(input, deltaTime);
-    UpdateAttributes(input, deltaTime);
+    UpdateAxis(input);
+    UpdateMovement(input);
+    UpdateAttributes(input);
 }
 
 void CameraController::UpdateMovement(
-    const CameraInput &input,
-    const float deltaTime
+    const CameraInput &input
 )
 {
-    float speed = 10.f * deltaTime;
+    float speed = 10.f * GetFrameTime();
     if (input.walk) {
         speed *= 0.2;
     }
@@ -58,10 +56,10 @@ void CameraController::UpdateMovement(
 }
 
 void CameraController::UpdateAxis(
-    const CameraInput &input,
-    const float deltaTime
+    const CameraInput &input
 )
 {
+    const float deltaTime = GetFrameTime();
     state.yaw -= input.mouseDeltaX * MOUSE_SENSITIVITY * deltaTime;
     state.pitch -= input.mouseDeltaY * MOUSE_SENSITIVITY * deltaTime;
 
@@ -71,11 +69,10 @@ void CameraController::UpdateAxis(
 }
 
 void CameraController::UpdateAttributes(
-    const CameraInput &input,
-    const float deltaTime
+    const CameraInput &input
 )
 {
-    if (const float factor = -input.mouseWheelDelta * 8 * deltaTime; factor != 0) {
+    if (const float factor = -input.mouseWheelDelta * 8 * GetFrameTime(); factor != 0) {
         state.fov = std::clamp(state.fov + factor, MIN_FOV, MAX_FOV);
     }
 }

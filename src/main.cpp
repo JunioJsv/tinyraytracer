@@ -1,57 +1,17 @@
 #include <memory>
 #include <raylib.h>
 
-#include "camera_controller.h"
 #include "render/render_v2.h"
-
-namespace
-{
-    CameraController camera;
-
-    void HandleInputs(
-        BaseRender &render
-    )
-    {
-        if (IsKeyPressed(KEY_F)) {
-            ToggleFullscreen();
-            const int width = GetScreenWidth(), height = GetScreenHeight();
-            render.Resize(width, height);
-        }
-    }
-
-    void UpdateCamera(
-        const float deltaTime
-    )
-    {
-        CameraInput input{};
-        const Vector2 mouseDelta(GetMouseDelta());
-        input.moveForward = IsKeyDown(KEY_W);
-        input.moveBackward = IsKeyDown(KEY_S);
-        input.moveLeft = IsKeyDown(KEY_A);
-        input.moveRight = IsKeyDown(KEY_D);
-        input.moveUp = IsKeyDown(KEY_SPACE);
-        input.moveDown = IsKeyDown(KEY_LEFT_CONTROL);
-        input.walk = IsKeyDown(KEY_LEFT_ALT);
-        input.sprint = IsKeyDown(KEY_LEFT_SHIFT);
-        input.mouseDeltaX = mouseDelta.x;
-        input.mouseDeltaY = mouseDelta.y;
-        input.mouseWheelDelta = GetMouseWheelMove();
-        camera.Update(input, deltaTime);
-    }
-}
 
 int main()
 {
     InitWindow(1024, 720, "Tiny Raytracer");
-    DisableCursor();
 
     const int width = GetScreenWidth(), height = GetScreenHeight();
-    const std::unique_ptr<BaseRender> render = std::make_unique<RenderV2>(width, height, camera);
+    const std::unique_ptr<BaseRender> render = std::make_unique<RenderV2>(width, height);
     render->SetBackground("resources/background.hdr");
 
     while (!WindowShouldClose()) {
-        UpdateCamera(GetFrameTime());
         render->Draw();
-        HandleInputs(*render);
     }
 }

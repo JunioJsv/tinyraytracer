@@ -6,15 +6,12 @@
 #include <raylib.h>
 #include <vector>
 
-#include "../camera_controller.h"
-
 class RenderV1 final : public BaseRender
 {
 public:
     RenderV1(
         int width,
-        int height,
-        const CameraController &camera
+        int height
     );
 
     ~RenderV1() override;
@@ -25,6 +22,8 @@ public:
         int width,
         int height
     ) override;
+
+    const CudaRaytracer::RenderInfo& UpdateRenderInfo() override;
 
 private:
     std::vector<uint32_t> pixels;
