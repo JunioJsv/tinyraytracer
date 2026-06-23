@@ -4,7 +4,7 @@ set(IMGUI_DIR   ${CMAKE_SOURCE_DIR}/external/imgui)
 add_library(rlImGui STATIC
         ${RLIMGUI_DIR}/rlImGui.cpp
 
-        ${CMAKE_SOURCE_DIR}/external/imgui/imgui.cpp
+        ${IMGUI_DIR}/imgui.cpp
         ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp
         ${IMGUI_DIR}/imgui_widgets.cpp
